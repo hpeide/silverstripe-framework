@@ -46,6 +46,14 @@
 			ChangeTrackerOptions: {
 				ignoreFieldSelector: '.no-change-track, .ss-upload :input, .cms-navigator :input'
 			},
+
+			/**
+			 * Variable: ValidationErrorShown
+			 * Boolean for tracking whether a validation error has been already been shown. Used because tabs can
+			 * sometimes be inadvertently initialised multiple times, but we don't want duplicate messages
+			 * (Boolean)
+			 */
+			ValidationErrorShown: false,
 		
 			/**
 			 * Constructor: onmatch
@@ -77,22 +85,43 @@
 					}
 				}
 
+				// Reset error display
+				this.setValidationErrorShown(false);
+
 				// TODO
 				// // Rewrite # links
 				// html = html.replace(/(<a[^>]+href *= *")#/g, '$1' + window.location.href.replace(/#.*$/,'') + '#');
 				// 
 				// // Rewrite iframe links (for IE)
 				// html = html.replace(/(<iframe[^>]*src=")([^"]+)("[^>]*>)/g, '$1' + $('base').attr('href') + '$2$3');
-				
-				// Show validation errors if necessary
-				if(this.hasClass('validationerror')) {
-					// Ensure the first validation error is visible
-					var tabError = this.find('.message.validation, .message.required').first().closest('.tab');
-					$('.cms-container').clearCurrentTabState(); // clear state to avoid override later on
-					tabError.closest('.ss-tabset').tabs('option', 'active', tabError.index('.tab'));
-				}
 
 				this._super();
+			},
+			'from .cms-tabset': {
+				onafterredrawtabs: function () {
+					// Show validation errors if necessary
+					if(this.hasClass('validationerror')) {
+						// Ensure the first validation error is visible
+						var tabError = this.find('.message.validation, .message.required').first().closest('.tab');
+						$('.cms-container').clearCurrentTabState(); // clear state to avoid override later on
+
+						// Attempt #1: Look for nearest .ss-tabset (usually nested deeper underneath a .cms-tabset).
+						var $tabSet = tabError.closest('.ss-tabset');
+
+						// Attempt #2: Next level in tab-ception, try to select the tab within this higher level .cms-tabset if possible
+						if (!$tabSet.length) {
+							$tabSet = tabError.closest('.cms-tabset');
+						}
+
+						if ($tabSet.length) {
+							$tabSet.tabs('option', 'active', tabError.index('.tab'));
+						} else if (!this.getValidationErrorShown()) {
+							// Ensure that this error message popup won't be added more than once
+							this.setValidationErrorShown(true);
+							errorMessage(ss.i18n._t('ModelAdmin.VALIDATIONERROR', 'Validation Error'));
+						}
+					}
+				}
 			},
 			onremove: function() {
 				this.changetracker('destroy');
@@ -278,21 +307,23 @@
 					sessionData = hasSessionStorage ? window.sessionStorage.getItem(this.attr('id')) : null,
 					sessionStates = sessionData ? JSON.parse(sessionData) : false,
 					elementID,
-					tabbed = this.find('.ss-tabset'),
+					tabbed = (this.find('.ss-tabset').length !== 0),
 					activeTab,
 					elementTab,
 					toggleComposite,
 					scrollY;
 
 				if(hasSessionStorage && sessionStates.length > 0){
-
 					$.each(sessionStates, function(i, sessionState) {
 						if(self.is('#' + sessionState.id)){
 							elementID = $('#' + sessionState.selected);
 						}
 					});
 
+					// If the element IDs saved in session states don't match up to anything in this particular form
+					// that probably means we haven't encountered this form yet, so focus on the first input
 					if($(elementID).length < 1){
+						this.focusFirstInput();
 						return;
 					}
 
@@ -316,7 +347,7 @@
 
 					//Fall back to nearest visible element if hidden (for select type fields)
 					if(!$(elementID).is(':visible')){
-						elementID = '#' + $(elementID).closest('.field').attr('id');
+						elementID = '#' + $(elementID).closest('.field:visible').attr('id');
 						scrollY = $(elementID).position().top;
 					}
 
@@ -330,14 +361,18 @@
 					}
 				
 				} else {
-					// If there is no focus data attribute set, focus input on first form element. Exclude elements which
-					// specifically opt-out of this behaviour via "data-skip-autofocus".
-					// This opt-out is useful if the first visible field is shown far down a scrollable area,
-					// for example for the pagination input field after a long GridField listing.
-					// Skip if an element in the form is already focused.
-
-					this.find(':input:not(:submit)[data-skip-autofocus!="true"]').filter(':visible:first').focus();
+					// If session storage is not supported or there is nothing stored yet, focus on the first input 
+					this.focusFirstInput();
 				}
+			},
+			/**
+			 * Skip if an element in the form is already focused. Exclude elements which specifically
+			 * opt-out of this behaviour via "data-skip-autofocus". This opt-out is useful if the
+			 * first visible field is shown far down a scrollable area, for example for the pagination
+			 * input field after a long GridField listing.
+			 */
+			focusFirstInput: function() {
+				this.find(':input:not(:submit)[data-skip-autofocus!="true"]').filter(':visible:first').focus();
 			}
 		});
 

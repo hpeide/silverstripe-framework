@@ -1,6 +1,6 @@
 <?php
 /**
- * Dropdown field, created from a <select> tag.
+ * Dropdown field, created from a select tag.
  *
  * <b>Setting a $has_one relation</b>
  *
@@ -122,6 +122,7 @@ class DropdownField extends FormField {
 	 * @param array|ArrayAccess $source A map of the dropdown items
 	 * @param string $value The current value
 	 * @param Form $form The parent form
+	 * @param string $emptyString Empty string value, e.g. "please choose"
 	 */
 	public function __construct($name, $title=null, $source=array(), $value='', $form=null, $emptyString=null) {
 		$this->setSource($source);
@@ -172,7 +173,12 @@ class DropdownField extends FormField {
 					if($value) {
 						$selected = ($value == $this->value);
 					} else {
-						$selected = ($value === $this->value) || (((string) $value) === ((string) $this->value));
+						// Safety check against casting arrays as strings in PHP>5.4
+						if(!is_array($value) && !is_array($this->value)) {
+							$selected = ($value === $this->value) || (((string) $value) === ((string) $this->value));
+						} else {
+							$selected = ($value === $this->value);
+						}
 					}
 
 					$this->isSelected = $selected;
@@ -313,13 +319,22 @@ class DropdownField extends FormField {
 	public function getSourceAsArray()
 	{
 		$source = $this->getSource();
+
+		// Simplify source if presented as dataobject list
+		if ($source instanceof SS_List) {
+			$source = $source->map();
+		}
+		if ($source instanceof SS_Map) {
+			$source = $source->toArray();
+		}
+
 		if (is_array($source)) {
 			return $source;
-		} else {
-			$sourceArray = array();
-			foreach ($source as $key => $value) {
-				$sourceArray[$key] = $value;
-			}
+		}
+
+		$sourceArray = array();
+		foreach ($source as $key => $value) {
+			$sourceArray[$key] = $value;
 		}
 		return $sourceArray;
 	}
@@ -362,7 +377,9 @@ class DropdownField extends FormField {
 	 */
 	public function castedCopy($classOrCopy) {
 		$field = parent::castedCopy($classOrCopy);
-		$field->setHasEmptyDefault($this->getHasEmptyDefault());
+		if($field->hasMethod('setHasEmptyDefault')) {
+			$field->setHasEmptyDefault($this->getHasEmptyDefault());
+		}
 		return $field;
 	}
 }

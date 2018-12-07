@@ -14,7 +14,7 @@
  * @package framework
  * @subpackage core
  */
-abstract class Object {
+abstract class SS_Object {
 
 	/**
 	 * An array of extension names and parameters to be applied to this object upon construction.
@@ -135,7 +135,7 @@ abstract class Object {
 		// Class to create should be the calling class if not Object,
 		// otherwise the first parameter
 		$class = get_called_class();
-		if($class == 'Object') $class = array_shift($args);
+		if($class == 'SS_Object' || $class == 'Object') $class = array_shift($args);
 
 		$class = self::getCustomClass($class);
 
@@ -158,7 +158,7 @@ abstract class Object {
 		// Singleton to create should be the calling class if not Object,
 		// otherwise the first parameter
 		$class = get_called_class();
-		if($class === 'Object') $class = array_shift($args);
+		if($class == 'SS_Object' || $class == 'Object') $class = array_shift($args);
 
 		return Injector::inst()->get($class);
 	}
@@ -192,8 +192,8 @@ abstract class Object {
 			// an $extension value can contain parameters as a string,
 			// e.g. "Versioned('Stage','Live')"
 			if(strpos($classSpec,'(') === false) {
-				if($firstArg === null) self::$_cache_inst_args[$classSpec.$firstArg] = Object::create($classSpec);
-				else self::$_cache_inst_args[$classSpec.$firstArg] = Object::create($classSpec, $firstArg);
+				if($firstArg === null) self::$_cache_inst_args[$classSpec.$firstArg] = SS_Object::create($classSpec);
+				else self::$_cache_inst_args[$classSpec.$firstArg] = SS_Object::create($classSpec, $firstArg);
 
 			} else {
 				list($class, $args) = self::parse_class_spec($classSpec);
@@ -201,7 +201,7 @@ abstract class Object {
 				if($firstArg !== null) array_unshift($args, $firstArg);
 				array_unshift($args, $class);
 
-				self::$_cache_inst_args[$classSpec.$firstArg] = call_user_func_array(array('Object','create'), $args);
+				self::$_cache_inst_args[$classSpec.$firstArg] = call_user_func_array(array('SS_Object','create'), $args);
 			}
 		}
 
@@ -220,19 +220,23 @@ abstract class Object {
 		// Keep track of the current bucket that we're putting data into
 		$bucket = &$args;
 		$bucketStack = array();
-		$had_ns = false;
+		$hadNamespace = false;
+		$currentKey = null;
 
 		foreach($tokens as $token) {
-			$tName = is_array($token) ? $token[0] : $token;
-			// Get the class naem
-			if($class == null && is_array($token) && $token[0] == T_STRING) {
+			// $forceResult used to allow null result to be detected
+			$result = $forceResult = null;
+			$tokenName = is_array($token) ? $token[0] : $token;
+
+			// Get the class name
+			if($class === null && is_array($token) && $token[0] === T_STRING) {
 				$class = $token[1];
-			} elseif(is_array($token) && $token[0] == T_NS_SEPARATOR) {
+			} elseif(is_array($token) && $token[0] === T_NS_SEPARATOR) {
 				$class .= $token[1];
-				$had_ns = true;
-			} elseif ($had_ns && is_array($token) && $token[0] == T_STRING) {
+				$hadNamespace = true;
+			} elseif($hadNamespace && is_array($token) && $token[0] === T_STRING) {
 				$class .= $token[1];
-				$had_ns = false;
+				$hadNamespace = false;
 			// Get arguments
 			} else if(is_array($token)) {
 				switch($token[0]) {
@@ -240,52 +244,85 @@ abstract class Object {
 					$argString = $token[1];
 					switch($argString[0]) {
 					case '"':
-						$argString = stripcslashes(substr($argString,1,-1));
+								$result = stripcslashes(substr($argString,1,-1));
 						break;
 					case "'":
-						$argString = str_replace(array("\\\\", "\\'"),array("\\", "'"), substr($argString,1,-1));
+								$result = str_replace(array("\\\\", "\\'"),array("\\", "'"), substr($argString,1,-1));
 						break;
 					default:
 						throw new Exception("Bad T_CONSTANT_ENCAPSED_STRING arg $argString");
 					}
-					$bucket[] = $argString;
+
 					break;
 
 				case T_DNUMBER:
-					$bucket[] = (double)$token[1];
+						$result = (double)$token[1];
 					break;
 
 				case T_LNUMBER:
-					$bucket[] = (int)$token[1];
+						$result = (int)$token[1];
+						break;
+
+					case T_DOUBLE_ARROW:
+						// We've encountered an associative array (the array itself has already been
+						// added to the bucket), so the previous item added to the bucket is the key
+						end($bucket);
+						$currentKey = current($bucket);
+						array_pop($bucket);
 					break;
 
 				case T_STRING:
 					switch($token[1]) {
-						case 'true': $bucket[] = true; break;
-						case 'false': $bucket[] = false; break;
-						case 'null': $bucket[] = null; break;
+							case 'true': $result = true; break;
+							case 'false': $result = false; break;
+							case 'null': $result = null; $forceResult = true; break;
 						default: throw new Exception("Bad T_STRING arg '{$token[1]}'");
 					}
+
 					break;
 
 				case T_ARRAY:
-					// Add an empty array to the bucket
-					$bucket[] = array();
-					$bucketStack[] = &$bucket;
-					$bucket = &$bucket[sizeof($bucket)-1];
+						$result = array();
+						break;
+				}
+			} else {
+				if($tokenName === '[') {
+					$result = array();
+				} elseif(($tokenName === ')' || $tokenName === ']') && ! empty($bucketStack)) {
+					// Store the bucket we're currently working on
+					$oldBucket = $bucket;
+					// Fetch the key for the bucket at the top of the stack
+					end($bucketStack);
+					$key = key($bucketStack);
+					reset($bucketStack);
+					// Re-instate the bucket from the top of the stack
+					$bucket = &$bucketStack[$key];
+					// Add our saved, "nested" bucket to the bucket we just popped off the stack
+					$bucket[$key] = $oldBucket;
+					// Remove the bucket we just popped off the stack
+					array_pop($bucketStack);
+				}
+			}
 
+			// If we've got something to add to the bucket, add it
+			if($result !== null || $forceResult) {
+				if($currentKey) {
+					$bucket[$currentKey] = $result;
+					$currentKey = null;
+				} else {
+					$bucket[] = $result;
 				}
 
-			} else {
-				if($tName == '[') {
-					// Add an empty array to the bucket
-					$bucket[] = array();
-					$bucketStack[] = &$bucket;
-					$bucket = &$bucket[sizeof($bucket)-1];
-				} elseif($tName == ')' || $tName == ']') {
-					// Pop-by-reference
-					$bucket = &$bucketStack[sizeof($bucketStack)-1];
-					array_pop($bucketStack);
+				// If we've just pushed an array, that becomes our new bucket
+				if($result === array()) {
+					// Fetch the key that the array was pushed to
+					end($bucket);
+					$key = key($bucket);
+					reset($bucket);
+					// Store reference to "old" bucket in the stack
+					$bucketStack[$key] = &$bucket;
+					// Set the active bucket to be our newly-pushed, empty array
+					$bucket = &$bucket[$key];
 				}
 			}
 		}
@@ -357,7 +394,7 @@ abstract class Object {
 	 *               defined
 	 */
 	public static function static_lookup($class, $name, $default = null) {
-		if (is_subclass_of($class, 'Object')) {
+		if (is_subclass_of($class, 'SS_Object')) {
 			if (isset($class::$$name)) {
 				$parent = get_parent_class($class);
 				if (!$parent || !isset($parent::$$name) || $parent::$$name !== $class::$$name) return $class::$$name;
@@ -509,13 +546,17 @@ abstract class Object {
 		}
 		$extensionClass = $matches[1];
 		if(!class_exists($extensionClass)) {
-			user_error(sprintf('Object::add_extension() - Can\'t find extension class for "%s"', $extensionClass),
-				E_USER_ERROR);
+			user_error(
+				sprintf('Object::add_extension() - Can\'t find extension class for "%s"', $extensionClass),
+				E_USER_ERROR
+			);
 		}
 
 		if(!is_subclass_of($extensionClass, 'Extension')) {
-			user_error(sprintf('Object::add_extension() - Extension "%s" is not a subclass of Extension',
-				$extensionClass), E_USER_ERROR);
+			user_error(
+				sprintf('Object::add_extension() - Extension "%s" is not a subclass of Extension', $extensionClass),
+				E_USER_ERROR
+			);
 		}
 
 		// unset some caches
@@ -531,13 +572,6 @@ abstract class Object {
 		Config::inst()->extraConfigSourcesChanged($class);
 
 		Injector::inst()->unregisterNamedObject($class);
-
-		// load statics now for DataObject classes
-		if(is_subclass_of($class, 'DataObject')) {
-			if(!is_subclass_of($extensionClass, 'DataExtension')) {
-				user_error("$extensionClass cannot be applied to $class without being a DataExtension", E_USER_ERROR);
-			}
-		}
 	}
 
 
@@ -612,7 +646,11 @@ abstract class Object {
 
 	// --------------------------------------------------------------------------------------------------------------
 
-	private static $unextendable_classes = array('Object', 'ViewableData', 'RequestHandler');
+	private static $unextendable_classes = array(
+		'SS_Object',
+		'Object',
+		'ViewableData',
+	);
 
 	static public function get_extra_config_sources($class = null) {
 		if($class === null) $class = get_called_class();
@@ -685,16 +723,17 @@ abstract class Object {
 	 * @return mixed
 	 */
 	public function __call($method, $arguments) {
+		$class = get_class($this);
 		// If the method cache was cleared by an an Object::add_extension() / Object::remove_extension()
 		// call, then we should rebuild it.
-		if(empty(self::$extra_methods[get_class($this)])) {
+		if(empty(self::$extra_methods[$class])) {
 			$this->defineMethods();
 		}
 
 		$method = strtolower($method);
 
-		if(isset(self::$extra_methods[$this->class][$method])) {
-			$config = self::$extra_methods[$this->class][$method];
+		if(isset(self::$extra_methods[$class][$method])) {
+			$config = self::$extra_methods[$class][$method];
 
 			switch(true) {
 				case isset($config['property']) :
@@ -711,11 +750,11 @@ abstract class Object {
 
 					if($this->destroyed) {
 						throw new Exception (
-							"Object->__call(): attempt to call $method on a destroyed $this->class object"
+							"Object->__call(): attempt to call $method on a destroyed $class object"
 						);
 					} else {
 						throw new Exception (
-							"Object->__call(): $this->class cannot pass control to $config[property]($config[index])."
+							"Object->__call(): $class cannot pass control to $config[property]($config[index])."
 								. ' Perhaps this object was mistakenly destroyed?'
 						);
 					}
@@ -729,14 +768,13 @@ abstract class Object {
 
 				default :
 					throw new Exception (
-						"Object->__call(): extra method $method is invalid on $this->class:"
+						"Object->__call(): extra method $method is invalid on $class:"
 							. var_export($config, true)
 					);
 			}
 		} else {
 			// Please do not change the exception code number below.
-			$class = get_class($this);
-			throw new Exception("Object->__call(): the method '$method' does not exist on '$class'", 2175);
+			throw new Exception("Object->__call(): the method '$method' does not exist on '$class', or the method is not public.", 2175);
 		}
 	}
 
@@ -752,7 +790,7 @@ abstract class Object {
 	 * @return bool
 	 */
 	public function hasMethod($method) {
-		return method_exists($this, $method) || isset(self::$extra_methods[$this->class][strtolower($method)]);
+		return method_exists($this, $method) || isset(self::$extra_methods[get_class($this)][strtolower($method)]);
 	}
 
 	/**
@@ -762,14 +800,15 @@ abstract class Object {
 	 * @return array
 	 */
 	public function allMethodNames($custom = false) {
-		if(!isset(self::$built_in_methods[$this->class])) {
-			self::$built_in_methods[$this->class] = array_map('strtolower', get_class_methods($this));
+		$class = get_class($this);
+		if(!isset(self::$built_in_methods[$class])) {
+			self::$built_in_methods[$class] = array_map('strtolower', get_class_methods($this));
 		}
 
-		if($custom && isset(self::$extra_methods[$this->class])) {
-			return array_merge(self::$built_in_methods[$this->class], array_keys(self::$extra_methods[$this->class]));
+		if($custom && isset(self::$extra_methods[$class])) {
+			return array_merge(self::$built_in_methods[$class], array_keys(self::$extra_methods[$class]));
 		} else {
-			return self::$built_in_methods[$this->class];
+			return self::$built_in_methods[$class];
 		}
 	}
 
@@ -785,15 +824,35 @@ abstract class Object {
 			$this->addMethodsFrom('extension_instances', $key);
 		}
 
-		if(isset($_REQUEST['debugmethods']) && isset(self::$built_in_methods[$this->class])) {
+		$class = get_class($this);
+		if(isset($_REQUEST['debugmethods']) && isset(self::$built_in_methods[$class])) {
 			Debug::require_developer_login();
 
-			echo '<h2>Methods defined on ' . $this->class . '</h2><ul>';
-			foreach(self::$built_in_methods[$this->class] as $method) {
+			echo "<h2>Methods defined on $class</h2><ul>";
+			foreach(self::$built_in_methods[$class] as $method) {
 				echo "<li>$method</li>";
 			}
 			echo '</ul>';
 		}
+	}
+
+	/**
+	 * @param object $extension
+	 * @return array
+	 */
+	protected function findMethodsFromExtension($extension) {
+		if (method_exists($extension, 'allMethodNames')) {
+			if ($extension instanceof Extension) $extension->setOwner($this);
+			$methods = $extension->allMethodNames(true);
+			if ($extension instanceof Extension) $extension->clearOwner();
+		} else {
+			if (!isset(self::$built_in_methods[$extension->class])) {
+				self::$built_in_methods[$extension->class] = array_map('strtolower', get_class_methods($extension));
+			}
+			$methods = self::$built_in_methods[$extension->class];
+		}
+
+		return $methods;
 	}
 
 	/**
@@ -803,25 +862,17 @@ abstract class Object {
 	 * @param string|int $index an index to use if the property is an array
 	 */
 	protected function addMethodsFrom($property, $index = null) {
+		$class = get_class($this);
 		$extension = ($index !== null) ? $this->{$property}[$index] : $this->$property;
 
 		if(!$extension) {
 			throw new InvalidArgumentException (
-				"Object->addMethodsFrom(): could not add methods from {$this->class}->{$property}[$index]"
+				"Object->addMethodsFrom(): could not add methods from {$class}->{$property}[$index]"
 			);
 		}
 
-		if(method_exists($extension, 'allMethodNames')) {
-			$methods = $extension->allMethodNames(true);
-
-		} else {
-			if(!isset(self::$built_in_methods[$extension->class])) {
-				self::$built_in_methods[$extension->class] = array_map('strtolower', get_class_methods($extension));
-			}
-			$methods = self::$built_in_methods[$extension->class];
-		}
-
-		if($methods) {
+		$methods = $this->findMethodsFromExtension($extension);
+		if ($methods) {
 			$methodInfo = array(
 				'property' => $property,
 				'index'    => $index,
@@ -830,11 +881,42 @@ abstract class Object {
 
 			$newMethods = array_fill_keys($methods, $methodInfo);
 
-			if(isset(self::$extra_methods[$this->class])) {
-				self::$extra_methods[$this->class] =
-					array_merge(self::$extra_methods[$this->class], $newMethods);
+			if(isset(self::$extra_methods[$class])) {
+				self::$extra_methods[$class] =
+					array_merge(self::$extra_methods[$class], $newMethods);
 			} else {
-				self::$extra_methods[$this->class] = $newMethods;
+				self::$extra_methods[$class] = $newMethods;
+			}
+		}
+	}
+
+	/**
+	 * Add all the methods from an object property (which is an {@link Extension}) to this object.
+	 *
+	 * @param string $property the property name
+	 * @param string|int $index an index to use if the property is an array
+	 */
+	protected function removeMethodsFrom($property, $index = null) {
+		$extension = ($index !== null) ? $this->{$property}[$index] : $this->$property;
+
+		if(!$extension) {
+			throw new InvalidArgumentException (
+				"Object->removeMethodsFrom(): could not remove methods from {$this->class}->{$property}[$index]"
+			);
+		}
+
+		$methods = $this->findMethodsFromExtension($extension);
+		if ($methods) {
+			foreach ($methods as $method) {
+				$methodInfo = self::$extra_methods[$this->class][$method];
+
+				if ($methodInfo['property'] === $property && $methodInfo['index'] === $index) {
+					unset(self::$extra_methods[$this->class][$method]);
+				}
+			}
+
+			if (empty(self::$extra_methods[$this->class])) {
+				unset(self::$extra_methods[$this->class]);
 			}
 		}
 	}
@@ -847,7 +929,7 @@ abstract class Object {
 	 * @param string $wrap the method name to wrap to
 	 */
 	protected function addWrapperMethod($method, $wrap) {
-		self::$extra_methods[$this->class][strtolower($method)] = array (
+		self::$extra_methods[get_class($this)][strtolower($method)] = array (
 			'wrap'   => $wrap,
 			'method' => $method
 		);
@@ -862,29 +944,31 @@ abstract class Object {
 	 *        function
 	 */
 	protected function createMethod($method, $code) {
-		self::$extra_methods[$this->class][strtolower($method)] = array (
-			'function' => create_function('$obj, $args', $code)
+		self::$extra_methods[get_class($this)][strtolower($method)] = array (
+			'function' => function($obj, $args) use ($code) {
+                return eval($code);
+            }
 		);
 	}
 
 	// --------------------------------------------------------------------------------------------------------------
 
 	/**
-	 * @see Object::get_static()
+	 * @see SS_Object::get_static()
 	 */
 	public function stat($name, $uncached = false) {
 		return Config::inst()->get(($this->class ? $this->class : get_class($this)), $name, Config::FIRST_SET);
 	}
 
 	/**
-	 * @see Object::set_static()
+	 * @see SS_Object::set_static()
 	 */
 	public function set_stat($name, $value) {
 		Config::inst()->update(($this->class ? $this->class : get_class($this)), $name, $value);
 	}
 
 	/**
-	 * @see Object::uninherited_static()
+	 * @see SS_Object::uninherited_static()
 	 */
 	public function uninherited($name) {
 		return Config::inst()->get(($this->class ? $this->class : get_class($this)), $name, Config::UNINHERITED);
@@ -958,7 +1042,13 @@ abstract class Object {
 	 * The extension methods are defined during {@link __construct()} in {@link defineMethods()}.
 	 *
 	 * @param string $method the name of the method to call on each extension
-	 * @param mixed $a1,... up to 7 arguments to be passed to the method
+	 * @param mixed $a1
+	 * @param mixed $a2
+	 * @param mixed $a3
+	 * @param mixed $a4
+	 * @param mixed $a5
+	 * @param mixed $a6
+	 * @param mixed $a7
 	 * @return array
 	 */
 	public function extend($method, &$a1=null, &$a2=null, &$a3=null, &$a4=null, &$a5=null, &$a6=null, &$a7=null) {
@@ -966,7 +1056,7 @@ abstract class Object {
 
 		if(!empty($this->beforeExtendCallbacks[$method])) {
 			foreach(array_reverse($this->beforeExtendCallbacks[$method]) as $callback) {
-				$value = call_user_func($callback, $a1, $a2, $a3, $a4, $a5, $a6, $a7);
+				$value = call_user_func_array($callback, array(&$a1, &$a2, &$a3, &$a4, &$a5, &$a6, &$a7));
 				if($value !== null) $values[] = $value;
 			}
 			$this->beforeExtendCallbacks[$method] = array();
@@ -983,7 +1073,7 @@ abstract class Object {
 
 		if(!empty($this->afterExtendCallbacks[$method])) {
 			foreach(array_reverse($this->afterExtendCallbacks[$method]) as $callback) {
-				$value = call_user_func($callback, $a1, $a2, $a3, $a4, $a5, $a6, $a7);
+				$value = call_user_func_array($callback, array(&$a1, &$a2, &$a3, &$a4, &$a5, &$a6, &$a7));
 				if($value !== null) $values[] = $value;
 			}
 			$this->afterExtendCallbacks[$method] = array();

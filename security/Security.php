@@ -130,6 +130,31 @@ class Security extends Controller implements TemplateGlobalProvider {
 	private static $logout_url = "Security/logout";
 
 	/**
+	 * The default lost password URL
+	 *
+	 * @config
+	 *
+	 * @var string
+	 */
+	private static $lost_password_url = "Security/lostpassword";
+
+	/**
+	 * Value of X-Frame-Options header
+	 *
+	 * @config
+	 * @var string
+	 */
+	private static $frame_options = 'SAMEORIGIN';
+
+	/**
+	 * Value of the X-Robots-Tag header (for the Security section)
+	 *
+	 * @config
+	 * @var string
+	 */
+	private static $robots_tag = 'noindex, nofollow';
+
+	/**
 	 * Get location of word list file
 	 *
 	 * @deprecated 4.0 Use the "Security.word_list" config setting instead
@@ -208,11 +233,14 @@ class Security extends Controller implements TemplateGlobalProvider {
 	 *
 	 * The alreadyLoggedIn value can contain a '%s' placeholder that will be replaced with a link
 	 * to log in.
+	 * @return SS_HTTPResponse
 	 */
 	public static function permissionFailure($controller = null, $messageSet = null) {
 		self::set_ignore_disallowed_actions(true);
 
 		if(!$controller) $controller = Controller::curr();
+
+		HTTPCacheControl::singleton()->disableCache(true);
 
 		if(Director::is_ajax()) {
 			$response = ($controller) ? $controller->getResponse() : new SS_HTTPResponse();
@@ -226,86 +254,93 @@ class Security extends Controller implements TemplateGlobalProvider {
 				}
 			}
 			return $response;
-		} else {
-			// Prepare the messageSet provided
-			if(!$messageSet) {
-				if($configMessageSet = static::config()->get('default_message_set')) {
-					$messageSet = $configMessageSet;
-				} else {
-					$messageSet = array(
-						'default' => _t(
-							'Security.NOTEPAGESECURED',
-							"That page is secured. Enter your credentials below and we will send "
-								. "you right along."
-						),
-						'alreadyLoggedIn' => _t(
-							'Security.ALREADYLOGGEDIN',
-							"You don't have access to this page.  If you have another account that "
-								. "can access that page, you can log in again below.",
+		}
 
-							"%s will be replaced with a link to log in."
-						)
-					);
-				}
+		// Prepare the messageSet provided
+		if(!$messageSet) {
+			if($configMessageSet = static::config()->get('default_message_set')) {
+				$messageSet = $configMessageSet;
+			} else {
+				$messageSet = array(
+					'default' => _t(
+						'Security.NOTEPAGESECURED',
+						"That page is secured. Enter your credentials below and we will send "
+							. "you right along."
+					),
+					'alreadyLoggedIn' => _t(
+						'Security.ALREADYLOGGEDIN',
+						"You don't have access to this page.  If you have another account that "
+							. "can access that page, you can log in again below.",
+
+						"%s will be replaced with a link to log in."
+					)
+				);
 			}
+		}
 
-			if(!is_array($messageSet)) {
-				$messageSet = array('default' => $messageSet);
-			}
+		if(!is_array($messageSet)) {
+			$messageSet = array('default' => $messageSet);
+		}
 
-			$member = Member::currentUser();
+		$member = Member::currentUser();
 
-			// Work out the right message to show
-			if($member && $member->exists()) {
-				$response = ($controller) ? $controller->getResponse() : new SS_HTTPResponse();
-				$response->setStatusCode(403);
+		// Work out the right message to show
+		if($member && $member->exists()) {
+			$response = ($controller) ? $controller->getResponse() : new SS_HTTPResponse();
+			$response->setStatusCode(403);
 
-				//If 'alreadyLoggedIn' is not specified in the array, then use the default
-				//which should have been specified in the lines above
-				if(isset($messageSet['alreadyLoggedIn'])) {
-					$message = $messageSet['alreadyLoggedIn'];
-				} else {
-					$message = $messageSet['default'];
-				}
-
-				// Somewhat hackish way to render a login form with an error message.
-				$me = new Security();
-				$form = $me->LoginForm();
-				$form->sessionMessage($message, 'warning');
-				Session::set('MemberLoginForm.force_message',1);
-				$formText = $me->login();
-
-				$response->setBody($formText);
-
-				$controller->extend('permissionDenied', $member);
-
-				return $response;
+			//If 'alreadyLoggedIn' is not specified in the array, then use the default
+			//which should have been specified in the lines above
+			if(isset($messageSet['alreadyLoggedIn'])) {
+				$message = $messageSet['alreadyLoggedIn'];
 			} else {
 				$message = $messageSet['default'];
 			}
 
-			Session::set("Security.Message.message", $message);
-			Session::set("Security.Message.type", 'warning');
+			// Somewhat hackish way to render a login form with an error message.
+			$me = new Security();
+			$form = $me->LoginForm();
+			$form->sessionMessage($message, 'warning');
+			Session::set('MemberLoginForm.force_message',1);
+			$loginResponse = $me->login();
+			if($loginResponse instanceof SS_HTTPResponse) {
+				return $loginResponse;
+			}
 
-			Session::set("BackURL", $_SERVER['REQUEST_URI']);
+			$response->setBody((string)$loginResponse);
 
-			// TODO AccessLogEntry needs an extension to handle permission denied errors
-			// Audit logging hook
 			$controller->extend('permissionDenied', $member);
 
-			$controller->redirect(
-				Config::inst()->get('Security', 'login_url')
-				. "?BackURL=" . urlencode($_SERVER['REQUEST_URI'])
-			);
+			return $response;
+		} else {
+			$message = $messageSet['default'];
 		}
-		return;
+
+		Session::set("Security.Message.message", $message);
+		Session::set("Security.Message.type", 'warning');
+
+		Session::set("BackURL", $_SERVER['REQUEST_URI']);
+
+		// TODO AccessLogEntry needs an extension to handle permission denied errors
+		// Audit logging hook
+		$controller->extend('permissionDenied', $member);
+
+		return $controller->redirect(
+			Config::inst()->get('Security', 'login_url')
+			. "?BackURL=" . urlencode($_SERVER['REQUEST_URI'])
+		);
 	}
 
 	public function init() {
 		parent::init();
 
 		// Prevent clickjacking, see https://developer.mozilla.org/en-US/docs/HTTP/X-Frame-Options
-		$this->getResponse()->addHeader('X-Frame-Options', 'SAMEORIGIN');
+		$this->getResponse()->addHeader('X-Frame-Options', $this->config()->frame_options);
+
+		// Prevent search engines from indexing the login page
+		if ($this->config()->robots_tag) {
+			$this->getResponse()->addHeader('X-Robots-Tag', $this->config()->robots_tag);
+		}
 	}
 
 	public function index() {
@@ -324,10 +359,8 @@ class Security extends Controller implements TemplateGlobalProvider {
 			if(in_array($authenticator, $authenticators)) {
 				return $authenticator;
 			}
-		} else {
-			return Authenticator::get_default_authenticator();
 		}
-
+		return Authenticator::get_default_authenticator();
 	}
 
 	/**
@@ -368,7 +401,11 @@ class Security extends Controller implements TemplateGlobalProvider {
 	 * @return string Returns the link to the given action
 	 */
 	public function Link($action = null) {
-		return Controller::join_links(Director::baseURL(), "Security", $action);
+		$link = Controller::join_links(Director::baseURL(), "Security", $action);
+
+		// Give extensions the chance to modify by reference
+		$this->extend('updateLink', $link, $action);
+		return $link;
 	}
 
 	/**
@@ -376,6 +413,8 @@ class Security extends Controller implements TemplateGlobalProvider {
 	 * sessions don't timeout. A common use is in the admin.
 	 */
 	public function ping() {
+		HTTPCacheControl::singleton()->disableCache();
+		Requirements::clear();
 		return 1;
 	}
 
@@ -502,7 +541,7 @@ class Security extends Controller implements TemplateGlobalProvider {
 	 * For multiple authenticators, Security_MultiAuthenticatorLogin is used.
 	 * See getTemplatesFor and getIncludeTemplate for how to override template logic
 	 *
-	 * @return string Returns the "login" page as HTML code.
+	 * @return string|SS_HTTPResponse Returns the "login" page as HTML code.
 	 */
 	public function login() {
 		// Check pre-login process
@@ -648,9 +687,9 @@ class Security extends Controller implements TemplateGlobalProvider {
 	 * @param string $autoLoginHash The auto login token.
 	 */
 	public static function getPasswordResetLink($member, $autologinToken) {
-		$autologinToken = urldecode($autologinToken);
+		$autologinToken      = urldecode($autologinToken);
 		$selfControllerClass = __CLASS__;
-		$selfController = new $selfControllerClass();
+		$selfController      = new $selfControllerClass();
 		return $selfController->Link('changepassword') . "?m={$member->ID}&t=$autologinToken";
 	}
 
@@ -739,7 +778,7 @@ class Security extends Controller implements TemplateGlobalProvider {
 	 * @return Form Returns the lost password form
 	 */
 	public function ChangePasswordForm() {
-		return Object::create('ChangePasswordForm', $this, 'ChangePasswordForm');
+		return SS_Object::create('ChangePasswordForm', $this, 'ChangePasswordForm');
 	}
 
 	/**
@@ -805,7 +844,11 @@ class Security extends Controller implements TemplateGlobalProvider {
 			$member = Member::create();
 			$member->FirstName = _t('Member.DefaultAdminFirstname', 'Default Admin');
 			$member->write();
-			$member->Groups()->add($adminGroup);
+			// Add member to group instead of adding group to member
+			// This bypasses the privilege escallation code in Member_GroupSet
+			$adminGroup
+				->DirectMembers()
+				->add($member);
 		}
 
 		return $member;
@@ -851,9 +894,9 @@ class Security extends Controller implements TemplateGlobalProvider {
 	 */
 	public static function check_default_admin($username, $password) {
 		return (
-			self::$default_username === $username
+			self::has_default_admin()
+			&& self::$default_username === $username
 			&& self::$default_password === $password
-			&& self::has_default_admin()
 		);
 	}
 
@@ -1101,7 +1144,7 @@ class Security extends Controller implements TemplateGlobalProvider {
 	 * @return string
 	 */
 	public static function login_url() {
-		return self::config()->login_url;
+		return Controller::join_links(Director::baseURL(), self::config()->login_url);
 	}
 
 
@@ -1113,9 +1156,19 @@ class Security extends Controller implements TemplateGlobalProvider {
 	 * @return string
 	 */
 	public static function logout_url() {
-		return self::config()->logout_url;
+		return Controller::join_links(Director::baseURL(), self::config()->logout_url);
 	}
 
+	/**
+	 * Get the URL of the logout page.
+	 *
+	 * To update the logout url use the "Security.logout_url" config setting.
+	 *
+	 * @return string
+	 */
+	public static function lost_password_url() {
+		return Controller::join_links(Director::baseURL(), self::config()->lost_password_url);
+	}
 
 	/**
 	 * Defines global accessible templates variables.
@@ -1126,6 +1179,7 @@ class Security extends Controller implements TemplateGlobalProvider {
 		return array(
 			"LoginURL" => "login_url",
 			"LogoutURL" => "logout_url",
+			"LostPasswordURL" => "lost_password_url",
 		);
 	}
 

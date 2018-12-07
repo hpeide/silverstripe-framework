@@ -5,7 +5,7 @@
  * @package framework
  * @subpackage filesystem
  */
-class Filesystem extends Object {
+class Filesystem extends SS_Object {
 
 	/**
 	 * @config
@@ -96,7 +96,7 @@ class Filesystem extends Object {
 				return false;
 			}
 		}
-		// if we are still here, the folder is empty. 
+		// if we are still here, the folder is empty.
 		rmdir($folder);
 		return true;
 	}

@@ -5,7 +5,7 @@
 CSV import can be easily achieved through PHP's built-in `fgetcsv()` method,
 but this method doesn't know anything about your datamodel. In SilverStripe,
 this can be handled through the a specialized CSV importer class that can
-be customized to fit your data.
+be customised to fit your data.
 
 ## The CsvBulkLoader class
 
@@ -26,7 +26,7 @@ Feature overview:
 
 You can use the CsvBulkLoader without subclassing or other customizations, if the column names
 in your CSV file match `$db` properties in your dataobject. E.g. a simple import for the
-`[api:Member]` class could have this data in a file:
+[api:Member] class could have this data in a file:
 
 	FirstName,LastName,Email
 	Donald,Duck,donald@disney.com
@@ -38,7 +38,7 @@ The loader would be triggered through the `load()` method:
 	$loader = new CsvBulkLoader('Member');
 	$result = $loader->load('<my-file-path>');
 
-By the way, you can import `[api:Member]` and `[api:Group]` data through `http://localhost/admin/security`
+By the way, you can import [api:Member] and [api:Group] data through `http://localhost/admin/security`
 interface out of the box.
 
 ## Import through ModelAdmin
@@ -52,7 +52,7 @@ The simplest way to use [api:CsvBulkLoader] is through a [api:ModelAdmin] interf
 	      'Player'
 	   );
 	   private static $model_importers = array(
-	      'Player' => 'PlayerCsvBulkLoader',
+	      'Player' => 'CsvBulkLoader',
 	   );
 	   private static $url_segment = 'players';
 	}
@@ -63,7 +63,7 @@ below the search form on the left.
 
 ## Import through a custom controller
 
-You can have more customized logic and interface feedback through a custom controller. 
+You can have more customised logic and interface feedback through a custom controller. 
 Let's create a simple upload form (which is used for `MyDataObject` instances). 
 You'll need to add a route to your controller to make it accessible via URL 
 (see [director](/reference/director)).
@@ -194,6 +194,22 @@ Sample implementation of a custom loader. Assumes a CSV-file in a certain format
 	   }
 	}
 	?>
+	
+Building off of the ModelAdmin example up top, use a custom loader instead of the default loader by adding it to `$model_importers`. In this example, `CsvBulkLoader` is replaced with `PlayerCsvBulkLoader`.
+
+	:::php
+	<?php
+	class PlayerAdmin extends ModelAdmin {
+	   private static $managed_models = array(
+		  'Player'
+	   );
+	   private static $model_importers = array(
+		  'Player' => 'PlayerCsvBulkLoader',
+	   );
+	   private static $url_segment = 'players';
+	}
+	?>
+
 
 ## Related
 

@@ -11,7 +11,7 @@
  * @package framework
  * @subpackage dev
  */
-class DebugView extends Object {
+class DebugView extends SS_Object {
 
 	/**
 	 * Column size to wrap long strings to

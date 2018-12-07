@@ -14,12 +14,7 @@
 // You may copy this code freely under the conditions of the GPL.
 //
 
-// FIXME: possibly remove assert()'s for production version?
-
-// PHP3 does not have assert()
-/**
- */
-define('USE_ASSERTS', function_exists('assert'));
+define('USE_ASSERTS', true);
 
 /**
  * @package framework
@@ -52,7 +47,7 @@ class _DiffOp {
 class _DiffOp_Copy extends _DiffOp {
 	var $type = 'copy';
 
-	public function _DiffOp_Copy ($orig, $final = false) {
+	public function __construct ($orig, $final = false) {
 		if (!is_array($final))
 			$final = $orig;
 		$this->orig = $orig;
@@ -72,7 +67,7 @@ class _DiffOp_Copy extends _DiffOp {
 class _DiffOp_Delete extends _DiffOp {
 	var $type = 'delete';
 
-	public function _DiffOp_Delete ($lines) {
+	public function __construct ($lines) {
 		$this->orig = $lines;
 		$this->final = false;
 	}
@@ -90,7 +85,7 @@ class _DiffOp_Delete extends _DiffOp {
 class _DiffOp_Add extends _DiffOp {
 	var $type = 'add';
 
-	public function _DiffOp_Add ($lines) {
+	public function __construct ($lines) {
 		$this->final = $lines;
 		$this->orig = false;
 	}
@@ -108,7 +103,7 @@ class _DiffOp_Add extends _DiffOp {
 class _DiffOp_Change extends _DiffOp {
 	var $type = 'change';
 
-	public function _DiffOp_Change ($orig, $final) {
+	public function __construct ($orig, $final) {
 		$this->orig = $orig;
 		$this->final = $final;
 	}
@@ -283,15 +278,17 @@ class _DiffEngine
 				if (empty($ymatches[$line]))
 			continue;
 		$matches = $ymatches[$line];
-				reset($matches);
-		while (list ($junk, $y) = each($matches))
+		$y = reset($matches);
+		do {
 			if (empty($this->in_seq[$y])) {
-			$k = $this->_lcs_pos($y);
-			USE_ASSERTS && assert($k > 0);
-			$ymids[$k] = $ymids[$k-1];
-			break;
-					}
-		while (list ($junk, $y) = each($matches)) {
+				$k = $this->_lcs_pos($y);
+				USE_ASSERTS && assert($k > 0);
+				$ymids[$k] = $ymids[$k - 1];
+				break;
+			}
+		} while (false !== ($y = next($matches)));
+
+		while (false !== ($y = next($matches))) {
 			if ($y > $this->seq[$k-1]) {
 			USE_ASSERTS && assert($y < $this->seq[$k]);
 			// Optimization: this is a common case:
@@ -418,7 +415,7 @@ class _DiffEngine
 	$i = 0;
 	$j = 0;
 
-	USE_ASSERTS && assert('sizeof($lines) == sizeof($changed)');
+	USE_ASSERTS && assert(sizeof($lines) == sizeof($changed));
 	$len = sizeof($lines);
 	$other_len = sizeof($other_changed);
 
@@ -438,7 +435,7 @@ class _DiffEngine
 		$j++;
 
 		while ($i < $len && ! $changed[$i]) {
-		USE_ASSERTS && assert('$j < $other_len && ! $other_changed[$j]');
+		USE_ASSERTS && assert($j < $other_len && ! $other_changed[$j]);
 		$i++; $j++;
 		while ($j < $other_len && $other_changed[$j])
 			$j++;
@@ -470,10 +467,10 @@ class _DiffEngine
 			$changed[--$i] = false;
 			while ($start > 0 && $changed[$start - 1])
 			$start--;
-			USE_ASSERTS && assert('$j > 0');
+			USE_ASSERTS && assert($j > 0);
 			while ($other_changed[--$j])
 			continue;
-			USE_ASSERTS && assert('$j >= 0 && !$other_changed[$j]');
+			USE_ASSERTS && assert($j >= 0 && !$other_changed[$j]);
 				}
 
 		/*
@@ -496,7 +493,7 @@ class _DiffEngine
 			while ($i < $len && $changed[$i])
 			$i++;
 
-			USE_ASSERTS && assert('$j < $other_len && ! $other_changed[$j]');
+			USE_ASSERTS && assert($j < $other_len && ! $other_changed[$j]);
 			$j++;
 			if ($j < $other_len && $other_changed[$j]) {
 			$corresponding = $i;
@@ -513,10 +510,10 @@ class _DiffEngine
 		while ($corresponding < $i) {
 		$changed[--$start] = 1;
 		$changed[--$i] = 0;
-		USE_ASSERTS && assert('$j > 0');
+		USE_ASSERTS && assert($j > 0);
 		while ($other_changed[--$j])
 			continue;
-		USE_ASSERTS && assert('$j >= 0 && !$other_changed[$j]');
+		USE_ASSERTS && assert($j >= 0 && !$other_changed[$j]);
 			}
 		}
 	}
@@ -541,7 +538,7 @@ class Diff
 	 *        (Typically these are lines from a file.)
 	 * @param $to_lines array An array of strings.
 	 */
-	public function Diff($from_lines, $to_lines) {
+	public function __construct($from_lines, $to_lines) {
 		$eng = new _DiffEngine;
 		$this->edits = $eng->diff($from_lines, $to_lines);
 		//$this->_check($from_lines, $to_lines);
@@ -802,18 +799,19 @@ class Diff
 
 		$content = str_replace(array("&nbsp;","<", ">"),array(" "," <", "> "),$content);
 		$candidateChunks = preg_split("/[\t\r\n ]+/", $content);
-		while(list($i,$item) = each($candidateChunks)) {
+		$item = reset($candidateChunks);
+		do {
 			if(isset($item[0]) && $item[0] == "<") {
 				$newChunk = $item;
 				while($item[strlen($item)-1] != ">") {
-					list($i,$item) = each($candidateChunks);
+					$item = next($candidateChunks);
 					$newChunk .= ' ' . $item;
 				}
 				$chunks[] = $newChunk;
 			} else {
 				$chunks[] = $item;
 			}
-		}
+		} while (false !== ($item = next($candidateChunks)));
 		return $chunks;
 	}
 
@@ -853,13 +851,13 @@ extends Diff
 	 * @param $mapped_to_lines array This array should
 	 *  have the same number of elements as $to_lines.
 	 */
-	public function MappedDiff($from_lines, $to_lines,
+	public function __construct($from_lines, $to_lines,
 						$mapped_from_lines, $mapped_to_lines) {
 
 		assert(sizeof($from_lines) == sizeof($mapped_from_lines));
 		assert(sizeof($to_lines) == sizeof($mapped_to_lines));
 
-		$this->Diff($mapped_from_lines, $mapped_to_lines);
+		parent::__construct($mapped_from_lines, $mapped_to_lines);
 
 		$xi = $yi = 0;
 		// Optimizing loop invariants:

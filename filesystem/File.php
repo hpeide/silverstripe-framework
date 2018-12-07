@@ -126,11 +126,11 @@ class File extends DataObject {
 	 * Instructions for the change you need to make are included in a comment in the config file.
 	 */
 	private static $allowed_extensions = array(
-		'','ace','arc','arj','asf','au','avi','bmp','bz2','cab','cda','css','csv','dmg','doc','docx','dotx','dotm',
-		'flv','gif','gpx','gz','hqx','ico','jar','jpeg','jpg','js','kml', 'm4a','m4v',
+		'','ace','arc','arj','asf','au','avi','bmp','bz2','cab','cda','csv','dmg','doc','docx','dotx',
+		'flv','gif','gpx','gz','hqx','ico','jpeg','jpg','kml', 'm4a','m4v',
 		'mid','midi','mkv','mov','mp3','mp4','mpa','mpeg','mpg','ogg','ogv','pages','pcx','pdf','pkg',
-		'png','pps','ppt','pptx','potx','potm','ra','ram','rm','rtf','sit','sitx','tar','tgz','tif','tiff',
-		'txt','wav','webm','wma','wmv','xls','xlsx','xltx','xltm','zip','zipx',
+		'png','pps','ppt','pptx','potx','ra','ram','rm','rtf','sit','sitx', 'tar','tgz','tif','tiff',
+		'txt','wav','webm','wma','wmv','xls','xlsx','xltx','zip','zipx',
 	);
 
 	/**
@@ -468,6 +468,15 @@ class File extends DataObject {
 		return self::get_app_category($this->getExtension());
 	}
 
+	/**
+	 * Return image markup for use as a thumbnail in a strip
+	 *
+	 * @return HTMLVarchar
+	 */
+	public function StripThumbnail() {
+		return DBField::create_field('HTMLVarchar', '<img src="'.$this->Icon().'"/>');
+	}
+
 	public function CMSThumbnail() {
 		return '<img src="' . $this->Icon() . '" />';
 	}
@@ -481,15 +490,15 @@ class File extends DataObject {
 	 */
 	public function Icon() {
 		$ext = strtolower($this->getExtension());
-		if(!Director::fileExists(FRAMEWORK_DIR . "/images/app_icons/{$ext}_32.gif")) {
+		if(!Director::fileExists(FRAMEWORK_DIR . "/images/app_icons/{$ext}_32.png")) {
 			$ext = $this->appCategory();
 		}
 
-		if(!Director::fileExists(FRAMEWORK_DIR . "/images/app_icons/{$ext}_32.gif")) {
+		if(!Director::fileExists(FRAMEWORK_DIR . "/images/app_icons/{$ext}_32.png")) {
 			$ext = "generic";
 		}
 
-		return FRAMEWORK_DIR . "/images/app_icons/{$ext}_32.gif";
+		return FRAMEWORK_DIR . "/images/app_icons/{$ext}_32.png";
 	}
 
 	/**
@@ -625,7 +634,7 @@ class File extends DataObject {
 	 *
 	 * Does not change the filesystem itself, please use {@link write()} for this.
 	 *
-	 * @param String $name
+	 * @param string $name
 	 */
 	public function setName($name) {
 		$oldName = $this->Name;
@@ -654,7 +663,10 @@ class File extends DataObject {
 				))->first()
 			) {
 				$suffix++;
-				$name = "$base-$suffix.$ext";
+				$name = "$base-$suffix";
+				if (!empty($ext)) {
+					$name .= ".$ext";
+				}
 			}
 		}
 
@@ -710,7 +722,9 @@ class File extends DataObject {
 	 * @return string
 	 */
 	public function getURL() {
-		return Controller::join_links(Director::baseURL(), $this->getFilename());
+		$url = Controller::join_links(Director::baseURL(), $this->getFilename());
+		$this->extend('updateURL', $url);
+		return $url;
 	}
 
 	/**
@@ -743,7 +757,9 @@ class File extends DataObject {
 		if($this->ParentID) {
 			// Don't use the cache, the parent has just been changed
 			$p = DataObject::get_by_id('Folder', $this->ParentID, false);
-			if($p && $p->exists()) return $p->getRelativePath() . $this->getField("Name");
+			if($p && $p->isInDB()) {
+				return $p->getRelativePath() . $this->getField("Name");
+			}
 			else return ASSETS_DIR . "/" . $this->getField("Name");
 		} else if($this->getField("Name")) {
 			return ASSETS_DIR . "/" . $this->getField("Name");
@@ -872,19 +888,25 @@ class File extends DataObject {
 	/**
 	 * Convert a php.ini value (eg: 512M) to bytes
 	 *
-	 * @param string $phpIniValue
+	 * @param string $iniValue
 	 * @return int
 	 */
-	public static function ini2bytes($PHPiniValue) {
-		switch(strtolower(substr(trim($PHPiniValue), -1))) {
-			case 'g':
-				$PHPiniValue *= 1024;
-			case 'm':
-				$PHPiniValue *= 1024;
-			case 'k':
-				$PHPiniValue *= 1024;
+	public static function ini2bytes($iniValue) {
+		// Remove  non-unit characters from the size
+		$unit = preg_replace('/[^bkmgtpezy]/i', '', $iniValue);
+		// Remove non-numeric characters from the size
+		$size = preg_replace('/[^0-9\.]/', '', $iniValue);
+
+		if ($unit) {
+			// Find the position of the unit in the ordered string which is the power
+			// of magnitude to multiply a kilobyte by
+			$size = round($size * pow(1024, stripos('bkmgtpezy', $unit[0])));
+		} else {
+			$size = round($size);
 		}
-		return $PHPiniValue;
+
+		// Cast to int - round() returns a float
+		return (int)$size;
 	}
 
 	/**

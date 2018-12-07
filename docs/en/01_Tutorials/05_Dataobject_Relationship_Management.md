@@ -160,7 +160,7 @@ It's empty by default, but you can add new students as required,
 or relate them to the project by typing in the box above the table.
 
 In our case, we want to manage those records, edit their details, and add new ones. 
-To accomplish this, we have added a specific `[api:GridFieldConfig]`.
+To accomplish this, we have added a specific [api:GridFieldConfig].
 While we could've built the config from scratch, there's several
 preconfigured instances. The `GridFieldConfig_RecordEditor` default configures
 the field to edit records, rather than just viewing them.
@@ -172,7 +172,8 @@ We call `setDisplayFields()` directly on the component responsible for their ren
 	Adding a `GridField` to a page type is a popular way to manage data,
 	but not the only one. If your data requires a dedicated interface
 	with more sophisticated search and management logic, consider
-	using the `[ModelAdmin](reference/modeladmin)` interface instead.
+	using the [ModelAdmin](/developer_guides/customising_the_admin_interface/modeladmin)
+	interface instead.
 </div>
 
 ![tutorial:tutorial5_project_creation.jpg](../_images/tutorial5_project_creation.jpg)
@@ -427,4 +428,4 @@ we suggest some excercises to make the solution more flexible:
    and avoid any duplication between the two subclasses.
  * Render mentor details in their own template
  * Change the `GridField` to list only five records per page (the default is 20).
-   This configuration is stored in the `[api:GridFieldPaginator]` component
+   This configuration is stored in the [api:GridFieldPaginator] component

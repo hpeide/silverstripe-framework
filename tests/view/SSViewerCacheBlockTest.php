@@ -142,10 +142,10 @@ class SSViewerCacheBlockTest extends SapphireTest {
 		Director::test('/?flush=1');
 		$this->assertEquals($this->_runtemplate('<% cached %>$Foo<% end_cached %>', array('Foo' => 2)), '2');
 	}
-	
+
 	public function testVersionedCache() {
 
-		$origStage = Versioned::current_stage();
+		$origMode = Versioned::get_reading_mode();
 
 		// Run without caching in stage to prove data is uncached
 		$this->_reset(false);
@@ -211,7 +211,7 @@ class SSViewerCacheBlockTest extends SapphireTest {
 			$this->_runtemplate('<% cached %>$Inspect<% end_cached %>', $data)
 		);
 
-		Versioned::reading_stage($origStage);
+		Versioned::set_reading_mode($origMode);
 	}
 
 	/**

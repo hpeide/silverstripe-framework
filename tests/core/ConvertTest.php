@@ -10,6 +10,24 @@ class ConvertTest extends SapphireTest {
 
 	protected $usesDatabase = false;
 
+	private $previousLocaleSetting = null;
+
+	public function setUp()
+	{
+		parent::setUp();
+		// clear the previous locale setting
+		$this->previousLocaleSetting = null;
+	}
+
+	public function tearDown()
+	{
+		parent::tearDown();
+		// If a test sets the locale, reset it on teardown
+		if ($this->previousLocaleSetting) {
+			setlocale(LC_CTYPE, $this->previousLocaleSetting);
+		}
+	}
+
 	/**
 	 * Tests {@link Convert::raw2att()}
 	 */
@@ -304,6 +322,20 @@ PHP
 	}
 
 	/**
+	 * Test that a context bitmask can be passed through to the json_encode method in {@link Convert::raw2json()}
+	 * and in {@link Convert::array2json()}
+	 */
+	public function testRaw2JsonWithContext()
+	{
+	    $data = array('foo' => 'b"ar');
+	    $expected = '{"foo":"b\u0022ar"}';
+	    $result = Convert::raw2json($data, JSON_HEX_QUOT);
+	    $this->assertSame($expected, $result);
+	    $wrapperResult = Convert::array2json($data, JSON_HEX_QUOT);
+	    $this->assertSame($expected, $wrapperResult);
+	}
+
+	/**
 	 * Tests {@link Convert::xml2array()}
 	 */
 	public function testXML2Array() {
@@ -364,28 +396,28 @@ XML
 		$data = 'Wëīrð characters ☺ such as ¤Ø¶÷╬';
 		// This requires this test file to have UTF-8 character encoding
 		$this->assertEquals(
-			$data, 
+			$data,
 			Convert::base64url_decode(Convert::base64url_encode($data))
 		);
-		
+
 		$data = 654.423;
 		$this->assertEquals(
 			$data,
 			Convert::base64url_decode(Convert::base64url_encode($data))
 		);
-		
+
 		$data = true;
 		$this->assertEquals(
 			$data,
 			Convert::base64url_decode(Convert::base64url_encode($data))
 		);
-		
+
 		$data = array('simple','array','¤Ø¶÷╬');
 		$this->assertEquals(
 			$data,
 			Convert::base64url_decode(Convert::base64url_encode($data))
 		);
-		
+
 		$data = array(
 			'a'  => 'associative',
 			4    => 'array',
@@ -395,5 +427,29 @@ XML
 			$data,
 			Convert::base64url_decode(Convert::base64url_encode($data))
 		);
+	}
+
+	public function testValidUtf8()
+	{
+		// Install a UTF-8 locale
+		$this->previousLocaleSetting = setlocale(LC_CTYPE, 0);
+
+		$locales = array('en_US.UTF-8', 'en_NZ.UTF-8', 'de_DE.UTF-8');
+		$localeInstalled = false;
+		foreach ($locales as $locale) {
+			if ($localeInstalled = setlocale(LC_CTYPE, $locale)) {
+				break;
+			}
+		}
+
+		// If the system doesn't have any of the UTF-8 locales, exit early
+		if ($localeInstalled === false) {
+			$this->markTestIncomplete('Unable to run this test because of missing locale!');
+			return;
+		}
+
+		$problematicText = html_entity_decode('<p>This is a&nbsp;Test with non-breaking&nbsp;space!</p>', ENT_COMPAT, 'UTF-8');
+
+		$this->assertTrue(mb_check_encoding(Convert::html2raw($problematicText), 'UTF-8'));
 	}
 }

@@ -46,7 +46,7 @@ class HtmlEditorConfig {
 	public static function get_active_identifier() {
 		$identifier = self::$current ? self::$current : 'default';
 		return $identifier;
-	}	
+	}
 	/**
 	 * Get the currently active configuration object
 	 * @return HtmlEditorConfig - the active configuration object
@@ -160,7 +160,7 @@ class HtmlEditorConfig {
 	 *
 	 * @see http://wiki.moxiecode.com/index.php/TinyMCE:API/tinymce.PluginManager/load
 	 *
-	 * @param String [0..] a string, or several strings, or a single array of strings - The plugins to enable
+	 * @param string [0..] a string, or several strings, or a single array of strings - The plugins to enable
 	 * @return HtmlEditorConfig
 	 */
 	public function enablePlugins() {
@@ -179,7 +179,7 @@ class HtmlEditorConfig {
 
 	/**
 	 * Enable one or several plugins. Will properly handle being passed a plugin that is already disabled
-	 * @param String [0..] a string, or several strings, or a single array of strings - The plugins to disable
+	 * @param string [0..] a string, or several strings, or a single array of strings - The plugins to disable
 	 * @return HtmlEditorConfig
 	 */
 	public function disablePlugins() {
@@ -241,13 +241,13 @@ class HtmlEditorConfig {
 
 	/**
 	 * Internal function for adding and removing buttons related to another button
-	 * @param $name string - the name of the button to modify
-	 * @param $offset integer - the offset relative to that button to perform an array_splice at - 0 for before $name,
+	 * @param $name string The name of the button to modify
+	 * @param $offset integer The offset relative to that button to perform an array_splice at - 0 for before $name,
 	 *                          1 for after
-	 * @param $del integer - the number of buttons to remove at the position given by index(string) + offset
-	 * @param $add mixed - an array or single item to insert at the position given by index(string) + offset,
+	 * @param $del integer The number of buttons to remove at the position given by index(string) + offset
+	 * @param $add mixed An array or single item to insert at the position given by index(string) + offset,
 	 *                     or null for no insertion
-	 * @return boolean - true if $name matched a button, false otherwise
+	 * @return boolean True if $name matched a button, false otherwise
 	 */
 	protected function modifyButtons($name, $offset, $del=0, $add=null) {
 		foreach ($this->buttons as &$buttons) {
@@ -262,8 +262,8 @@ class HtmlEditorConfig {
 
 	/**
 	 * Insert buttons before the first occurance of another button
-	 * @param string - the name of the button to insert other buttons before
-	 * @param string a string, or several strings, or a single array of strings - the button names to insert before
+	 * @param string The name of the button to insert other buttons before
+	 * @param string A string, or several strings, or a single array of strings - the button names to insert before
 	 *               that button
 	 * @return boolean - true if insertion occured, false if it did not (because the given button name was not found)
 	 */
@@ -275,10 +275,10 @@ class HtmlEditorConfig {
 
 	/**
 	 * Insert buttons after the first occurance of another button
-	 * @param string - the name of the button to insert other buttons after
-	 * @param string a string, or several strings, or a single array of strings - the button names to insert after
+	 * @param string The name of the button to insert other buttons after
+	 * @param string A string, or several strings, or a single array of strings - the button names to insert after
 	 *               that button
-	 * @return boolean - true if insertion occured, false if it did not (because the given button name was not found)
+	 * @return boolean True if insertion occured, false if it did not (because the given button name was not found)
 	 */
 	public function insertButtonsAfter() {
 		$inserts = func_get_args();
@@ -335,7 +335,7 @@ class HtmlEditorConfig {
 
 			// save config plugins settings
 			$settings['plugins'] = implode(',', $configPlugins);
-			
+
 			// buttons
 			foreach ($config->buttons as $i=>$buttons) {
 				$settings['theme_advanced_buttons'.$i] = implode(',', $buttons);

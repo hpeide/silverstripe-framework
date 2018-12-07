@@ -7,24 +7,88 @@
  */
 class HTTPTest extends FunctionalTest {
 
+	public function setUp()
+	{
+		parent::setUp();
+		// Remove dev-only config
+		Config::inst()->remove('HTTP', 'disable_http_cache');
+		HTTPCacheControl::reset();
+	}
+
 	public function testAddCacheHeaders() {
 		$body = "<html><head></head><body><h1>Mysite</h1></body></html>";
 		$response = new SS_HTTPResponse($body, 200);
-		$this->assertEmpty($response->getHeader('Cache-Control'));
+		HTTPCacheControl::singleton()->publicCache();
+		HTTP::set_cache_age(30);
+		HTTP::add_cache_headers($response);
+		$this->assertNotEmpty($response->getHeader('Cache-Control'));
 
+		// Ensure cache headers are set correctly when disabled via config (e.g. when dev)
+		Config::inst()->update('HTTP', 'disable_http_cache', true);
+		HTTPCacheControl::reset();
+		HTTPCacheControl::singleton()->publicCache();
+		HTTP::set_cache_age(30);
+		$response = new SS_HTTPResponse($body, 200);
+		HTTP::add_cache_headers($response);
+		$this->assertContains('no-cache', $response->getHeader('Cache-Control'));
+		$this->assertContains('no-store', $response->getHeader('Cache-Control'));
+		$this->assertContains('must-revalidate', $response->getHeader('Cache-Control'));
+
+		// Ensure max-age setting is respected in production.
+		Config::inst()->remove('HTTP', 'disable_http_cache');
+		HTTPCacheControl::reset();
+		HTTPCacheControl::singleton()->publicCache();
+		HTTP::set_cache_age(30);
+		$response = new SS_HTTPResponse($body, 200);
+		HTTP::add_cache_headers($response);
+		$this->assertContains('max-age=30', $response->getHeader('Cache-Control'));
+		$this->assertNotContains('max-age=0', $response->getHeader('Cache-Control'));
+
+		// Still "live": Ensure header's aren't overridden if already set (using purposefully different values).
+		$headers = array(
+			'Vary' => '*',
+			'Pragma' => 'no-cache',
+			'Cache-Control' => 'max-age=0, no-cache, no-store',
+		);
+		HTTPCacheControl::reset();
+		HTTPCacheControl::singleton()->publicCache();
+		HTTP::set_cache_age(30);
+		$response = new SS_HTTPResponse($body, 200);
+		foreach($headers as $name => $value) {
+			$response->addHeader($name, $value);
+		}
+
+		// Expect a warning if the header is already set
+		$this->setExpectedException(
+			'PHPUnit_Framework_Error_Warning',
+			'Cache-Control header has already been set. '
+			. 'Please use HTTPCacheControl API to set caching options instead.'
+		);
+		HTTP::add_cache_headers($response);
+	}
+
+    public function testConfigVary() {
+		$body = "<html><head></head><body><h1>Mysite</h1></body></html>";
+		$response = new SS_HTTPResponse($body, 200);
 		HTTP::set_cache_age(30);
 		HTTP::add_cache_headers($response);
 
-		$this->assertNotEmpty($response->getHeader('Cache-Control'));
+		$v = $response->getHeader('Vary');
+		$this->assertNotEmpty($v);
 
-		Config::inst()->update('Director', 'environment_type', 'dev');
-		HTTP::add_cache_headers($response);
-		$this->assertContains('max-age=0', $response->getHeader('Cache-Control'));
+		$this->assertContains("X-Forwarded-Protocol", $v);
+		$this->assertNotContains("Cookie", $v);
+		$this->assertNotContains("User-Agent", $v);
+		$this->assertNotContains("Accept", $v);
 
-		Config::inst()->update('Director', 'environment_type', 'live');
+		Config::inst()->update('HTTP', 'vary', '');
+		HTTPCacheControl::reset();
+
+		$response = new SS_HTTPResponse($body, 200);
 		HTTP::add_cache_headers($response);
-		$this->assertContains('max-age=30', explode(', ', $response->getHeader('Cache-Control')));
-		$this->assertNotContains('max-age=0', $response->getHeader('Cache-Control'));
+
+		$v = $response->getHeader('Vary');
+		$this->assertEmpty($v);
 	}
 
 	/**
@@ -135,6 +199,7 @@ class HTTPTest extends FunctionalTest {
 		$this->assertEquals('image/gif', HTTP::get_mime_type(FRAMEWORK_DIR.'/tests/control/files/file.gif'));
 		$this->assertEquals('text/html', HTTP::get_mime_type(FRAMEWORK_DIR.'/tests/control/files/file.html'));
 		$this->assertEquals('image/jpeg', HTTP::get_mime_type(FRAMEWORK_DIR.'/tests/control/files/file.jpg'));
+		$this->assertEquals('image/jpeg', HTTP::get_mime_type(FRAMEWORK_DIR.'/tests/control/files/upperfile.JPG'));
 		$this->assertEquals('image/png', HTTP::get_mime_type(FRAMEWORK_DIR.'/tests/control/files/file.png'));
 		$this->assertEquals('image/vnd.adobe.photoshop',
 			HTTP::get_mime_type(FRAMEWORK_DIR.'/tests/control/files/file.psd'));

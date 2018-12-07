@@ -3,7 +3,7 @@ summary: Modify the data model without using subclasses.
 
 # Extending DataObjects
 
-You can add properties and methods to existing [api:DataObjects]s like [api:Member] without hacking core code or sub 
+You can add properties and methods to existing [api:DataObject]s like [api:Member] without hacking core code or sub 
 classing by using [api:DataExtension]. See the [Extending SilverStripe](../extending) guide for more information on
 [api:DataExtension].
 
@@ -12,7 +12,7 @@ data records.
 
 ## onBeforeWrite
 
-You can customize saving-behavior for each DataObject, e.g. for adding workflow or data customization. The function is 
+You can customise saving-behavior for each DataObject, e.g. for adding workflow or data customization. The function is 
 triggered when calling *write()* to save the object to the database. This includes saving a page in the CMS or altering 
 a `ModelAdmin` record.
 

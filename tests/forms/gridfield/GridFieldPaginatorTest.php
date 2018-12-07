@@ -51,4 +51,42 @@ class GridFieldPaginatorTest extends FunctionalTest {
 		// Check that there is still 'View 1 - 4 of 4' part on the left of the paginator
 		$this->assertEquals(2, count($content->getBySelector('.pagination-records-number')));
 	}
+
+	public function testUnlimitedRowCount() {
+		$total = $this->list->count();
+		// set up the paginator
+		/** @var GridFieldPaginator $paginator */
+		$paginator = $this->gridField->getConfig()->getComponentByType("GridFieldPaginator");
+		$paginator->setThrowExceptionOnBadDataType(true);
+		$paginator->setItemsPerPage(1);
+		$paginator->getManipulatedData($this->gridField, $this->list);
+
+
+		$params = $paginator->getTemplateParameters($this->gridField)->toMap();
+		$this->assertFalse($params['OnlyOnePage']);
+		$this->assertEquals($total, $params['NumRecords']);
+
+		$paginator->setItemsPerPage(0);
+		$params = $paginator->getTemplateParameters($this->gridField)->toMap();
+		$this->assertTrue($params['OnlyOnePage']);
+		$this->assertEquals($total, $params['NumRecords']);
+	}
+
+	public function testPaginationAvoidsIllegalOffsets() {
+		$grid = $this->gridField;
+		$total = $this->list->count();
+		$perPage = $grid->getConfig()->getComponentByType('GridFieldPaginator')->getItemsPerPage();
+		// Get the last page that will contain results
+		$lastPage = ceil($total / $perPage);
+		// Set the paginator state to point to an 'invalid' page
+		$grid->State->GridFieldPaginator->currentPage = $lastPage + 1;
+
+		// Get the paginated list
+		$list = $grid->getManipulatedList();
+
+		// Assert that the paginator state has been corrected and the list contains items
+		$this->assertEquals(1, $grid->State->GridFieldPaginator->currentPage);
+		$this->assertEquals($perPage, $list->count());
+	}
+
 }

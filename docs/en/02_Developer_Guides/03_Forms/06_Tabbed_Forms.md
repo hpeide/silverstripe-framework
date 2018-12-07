@@ -19,7 +19,7 @@ name, and normally they all exist under the `Root` [api:TabSet].
 display up to two levels of tabs in the interface. If you want to group data further than that, try [api:ToggleField].
 </div>
 
-## Adding a field from a tab.
+## Adding a field to a tab
 
 	:::php
 	$fields->addFieldToTab('Root.Main', new TextField(..));
@@ -37,7 +37,7 @@ display up to two levels of tabs in the interface. If you want to group data fur
 ## Moving a field between tabs
 
 	:::php
-	$field = $fields->dataFieldByName('Content');
+	$content = $fields->dataFieldByName('Content');
 
 	$fields->removeFieldFromTab('Root.Main', 'Content');
 	$fields->addFieldToTab('Root.MyContent', $content);

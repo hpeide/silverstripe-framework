@@ -45,7 +45,21 @@ class MemberTest extends FunctionalTest {
 		parent::tearDown();
 	}
 
-
+	public function testPasswordEncryptionUpdatedOnChangedPassword()
+	{
+		Config::inst()->update('Security', 'password_encryption_algorithm', 'none');
+		$member = Member::create();
+		$member->SetPassword = 'password';
+		$member->write();
+		$this->assertEquals('password', $member->Password);
+		$this->assertEquals('none', $member->PasswordEncryption);
+		Config::inst()->update('Security', 'password_encryption_algorithm', 'blowfish');
+		$member->SetPassword = 'newpassword';
+		$member->write();
+		$this->assertNotEquals('password', $member->Password);
+		$this->assertNotEquals('newpassword', $member->Password);
+		$this->assertEquals('blowfish', $member->PasswordEncryption);
+	}
 
 	/**
 	 * @expectedException ValidationException
@@ -94,28 +108,6 @@ class MemberTest extends FunctionalTest {
 		);
 	}
 
-	public function testDefaultPasswordEncryptionDoesntChangeExistingMembers() {
-		$member = new Member();
-		$member->Password = 'mypassword';
-		$member->PasswordEncryption = 'sha1_v2.4';
-		$member->write();
-
-		$origAlgo = Security::config()->password_encryption_algorithm;
-		Security::config()->password_encryption_algorithm = 'none';
-
-		$member->Password = 'mynewpassword';
-		$member->write();
-
-		$this->assertEquals(
-			$member->PasswordEncryption,
-			'sha1_v2.4'
-		);
-		$result = $member->checkPassword('mynewpassword');
-		$this->assertTrue($result->valid());
-
-		Security::config()->password_encryption_algorithm = $origAlgo;
-	}
-
 	public function testKeepsEncryptionOnEmptyPasswords() {
 		$member = new Member();
 		$member->Password = 'mypassword';
@@ -126,8 +118,8 @@ class MemberTest extends FunctionalTest {
 		$member->write();
 
 		$this->assertEquals(
-			$member->PasswordEncryption,
-			'sha1_v2.4'
+			Security::config()->get('password_encryption_algorithm'),
+            $member->PasswordEncryption
 		);
 		$result = $member->checkPassword('');
 		$this->assertTrue($result->valid());
@@ -185,16 +177,42 @@ class MemberTest extends FunctionalTest {
 	 * Test that changed passwords will send an email
 	 */
 	public function testChangedPasswordEmaling() {
+		Config::inst()->update('Member', 'notify_password_change', true);
+
 		$this->clearEmails();
 
 		$member = $this->objFromFixture('Member', 'test');
 		$this->assertNotNull($member);
 		$valid = $member->changePassword('32asDF##$$%%');
 		$this->assertTrue($valid->valid());
-		/*
-		$this->assertEmailSent("sam@silverstripe.com", null, "/changed password/",
-		'/sam@silverstripe\.com.*32asDF##\$\$%%/');
-		*/
+
+		$this->assertEmailSent('testuser@example.com', null, 'Your password has been changed',
+			'/testuser@example\.com/');
+
+	}
+
+	/**
+	 * Test that triggering "forgotPassword" sends an Email with a reset link
+	 */
+	public function testForgotPasswordEmaling() {
+		$this->clearEmails();
+		$this->autoFollowRedirection = false;
+
+		$member = $this->objFromFixture('Member', 'test');
+		$this->assertNotNull($member);
+
+		// Initiate a password-reset
+		$response = $this->post('Security/LostPasswordForm', array('Email' => $member->Email));
+
+		$this->assertEquals($response->getStatusCode(), 302);
+
+		// We should get redirected to Security/passwordsent
+		$this->assertContains('Security/passwordsent/testuser@example.com',
+			urldecode($response->getHeader('Location')));
+
+		// Check existance of reset link
+		$this->assertEmailSent("testuser@example.com", null, 'Your password reset link',
+			'/Security\/changepassword\?m='.$member->ID.'&t=[^"]+/');
 	}
 
 	/**
@@ -359,6 +377,35 @@ class MemberTest extends FunctionalTest {
 		);
 	}
 
+	/**
+	 * Assertions to check that Member_GroupSet is functionally equivalent to ManyManyList
+	 */
+	public function testRemoveGroups()
+	{
+		$staffmember = $this->objFromFixture('Member', 'staffmember');
+
+		$staffgroup = $this->objFromFixture('Group', 'staffgroup');
+		$managementgroup = $this->objFromFixture('Group', 'managementgroup');
+
+		$this->assertTrue(
+			$staffmember->inGroups(array($staffgroup, $managementgroup)),
+			'inGroups() succeeds if a membership is detected on one of many passed groups'
+		);
+
+		$staffmember->Groups()->remove($managementgroup);
+		$this->assertFalse(
+			$staffmember->inGroup($managementgroup),
+			'member was not removed from group using ->Groups()->remove()'
+		);
+
+		$staffmember->Groups()->removeAll();
+		$this->assertEquals(
+			0,
+			$staffmember->Groups()->count(),
+			'member was not removed from all groups using ->Groups()->removeAll()'
+		);
+	}
+
 	public function testAddToGroupByCode() {
 		$grouplessMember = $this->objFromFixture('Member', 'grouplessmember');
 		$memberlessGroup = $this->objFromFixture('Group','memberlessgroup');
@@ -469,7 +516,7 @@ class MemberTest extends FunctionalTest {
 	 * edit and delete their own record too.
 	 */
 	public function testCanManipulateOwnRecord() {
-		$extensions = $this->removeExtensions(Object::get_extensions('Member'));
+		$extensions = $this->removeExtensions(SS_Object::get_extensions('Member'));
 		$member = $this->objFromFixture('Member', 'test');
 		$member2 = $this->objFromFixture('Member', 'staffmember');
 
@@ -497,7 +544,7 @@ class MemberTest extends FunctionalTest {
 	}
 
 	public function testAuthorisedMembersCanManipulateOthersRecords() {
-		$extensions = $this->removeExtensions(Object::get_extensions('Member'));
+		$extensions = $this->removeExtensions(SS_Object::get_extensions('Member'));
 		$member = $this->objFromFixture('Member', 'test');
 		$member2 = $this->objFromFixture('Member', 'staffmember');
 
@@ -512,7 +559,7 @@ class MemberTest extends FunctionalTest {
 	}
 
 	public function testExtendedCan() {
-		$extensions = $this->removeExtensions(Object::get_extensions('Member'));
+		$extensions = $this->removeExtensions(SS_Object::get_extensions('Member'));
 		$member = $this->objFromFixture('Member', 'test');
 
 		/* Normal behaviour is that you can't view a member unless canView() on an extension returns true */
@@ -584,7 +631,6 @@ class MemberTest extends FunctionalTest {
 
 	public function testOnChangeGroups() {
 		$staffGroup = $this->objFromFixture('Group', 'staffgroup');
-		$adminGroup = $this->objFromFixture('Group', 'admingroup');
 		$staffMember = $this->objFromFixture('Member', 'staffmember');
 		$adminMember = $this->objFromFixture('Member', 'admin');
 		$newAdminGroup = new Group(array('Title' => 'newadmin'));
@@ -616,6 +662,106 @@ class MemberTest extends FunctionalTest {
 		$this->assertTrue(
 			$adminMember->onChangeGroups(array($newAdminGroup->ID)),
 			'Adding new admin group relation is allowed for admin members'
+		);
+	}
+
+    /**
+     * Ensure DirectGroups listbox disallows admin-promotion
+     */
+    public function testAllowedGroupsListbox() {
+        /** @var Group $adminGroup */
+        $adminGroup = $this->objFromFixture('Group', 'admingroup');
+        /** @var Member $staffMember */
+        $staffMember = $this->objFromFixture('Member', 'staffmember');
+        /** @var Member $adminMember */
+        $adminMember = $this->objFromFixture('Member', 'admin');
+
+        // Ensure you can see the DirectGroups box
+        $this->logInWithPermission('EDIT_PERMISSIONS');
+
+        // Non-admin member field contains non-admin groups
+        /** @var ListboxField $staffListbox */
+        $staffListbox = $staffMember->getCMSFields()->dataFieldByName('DirectGroups');
+        $this->assertArrayNotHasKey($adminGroup->ID, $staffListbox->getSource());
+
+        // admin member field contains admin group
+        /** @var ListboxField $adminListbox */
+        $adminListbox = $adminMember->getCMSFields()->dataFieldByName('DirectGroups');
+        $this->assertArrayHasKey($adminGroup->ID, $adminListbox->getSource());
+
+        // If logged in as admin, staff listbox has admin group
+        $this->logInWithPermission('ADMIN');
+        $staffListbox = $staffMember->getCMSFields()->dataFieldByName('DirectGroups');
+        $this->assertArrayHasKey($adminGroup->ID, $staffListbox->getSource());
+    }
+
+	/**
+	 * Test Member_GroupSet::add
+	 */
+	public function testOnChangeGroupsByAdd() {
+		$staffMember = $this->objFromFixture('Member', 'staffmember');
+		$adminMember = $this->objFromFixture('Member', 'admin');
+
+		// Setup new admin group
+		$newAdminGroup = new Group(array('Title' => 'newadmin'));
+		$newAdminGroup->write();
+		Permission::grant($newAdminGroup->ID, 'ADMIN');
+
+		// Setup non-admin group
+		$newOtherGroup = new Group(array('Title' => 'othergroup'));
+		$newOtherGroup->write();
+
+		// Test staff can be added to other group
+		$this->assertFalse($staffMember->inGroup($newOtherGroup));
+		$staffMember->Groups()->add($newOtherGroup);
+		$this->assertTrue(
+			$staffMember->inGroup($newOtherGroup),
+			'Adding new non-admin group relation is allowed for non-admin members'
+		);
+
+		// Test staff member can't be added to admin groups
+		$this->assertFalse($staffMember->inGroup($newAdminGroup));
+		$staffMember->Groups()->add($newAdminGroup);
+		$this->assertFalse(
+			$staffMember->inGroup($newAdminGroup),
+			'Adding new admin group relation is not allowed for non-admin members'
+		);
+
+		// Test staff member can be added to admin group by admins
+		$this->logInAs($adminMember);
+		$staffMember->Groups()->add($newAdminGroup);
+		$this->assertTrue(
+			$staffMember->inGroup($newAdminGroup),
+			'Adding new admin group relation is allowed for normal users, when granter is logged in as admin'
+		);
+
+		// Test staff member can be added if they are already admin
+		$this->session()->inst_set('loggedInAs', null);
+		$this->assertFalse($adminMember->inGroup($newAdminGroup));
+		$adminMember->Groups()->add($newAdminGroup);
+		$this->assertTrue(
+			$adminMember->inGroup($newAdminGroup),
+			'Adding new admin group relation is allowed for admin members'
+		);
+	}
+
+	/**
+	 * Test Member_GroupSet::add
+	 */
+	public function testOnChangeGroupsBySetIDList() {
+		$staffMember = $this->objFromFixture('Member', 'staffmember');
+
+		// Setup new admin group
+		$newAdminGroup = new Group(array('Title' => 'newadmin'));
+		$newAdminGroup->write();
+		Permission::grant($newAdminGroup->ID, 'ADMIN');
+
+		// Test staff member can't be added to admin groups
+		$this->assertFalse($staffMember->inGroup($newAdminGroup));
+		$staffMember->Groups()->setByIDList(array($newAdminGroup->ID));
+		$this->assertFalse(
+			$staffMember->inGroup($newAdminGroup),
+			'Adding new admin group relation is not allowed for non-admin members'
 		);
 	}
 
@@ -751,7 +897,6 @@ class MemberTest extends FunctionalTest {
 	public function testFailedLoginCount() {
 		$maxFailedLoginsAllowed = 3;
 		//set up the config variables to enable login lockouts
-		Config::nest();
 		Config::inst()->update('Member', 'lock_out_after_incorrect_logins', $maxFailedLoginsAllowed);
 
 		$member = $this->objFromFixture('Member', 'test');
@@ -773,7 +918,135 @@ class MemberTest extends FunctionalTest {
 		}
 	}
 
-	public function testCustomMemberValidator() {
+	public function testMemberValidator()
+	{
+		// clear custom requirements for this test
+		Config::inst()->update('Member_Validator', 'customRequired', null);
+		$memberA = $this->objFromFixture('Member', 'admin');
+		$memberB = $this->objFromFixture('Member', 'test');
+
+		// create a blank form
+		$form = new MemberTest_ValidatorForm();
+
+		$validator = new Member_Validator();
+		$validator->setForm($form);
+
+		// Simulate creation of a new member via form, but use an existing member identifier
+		$fail = $validator->php(array(
+			'FirstName' => 'Test',
+			'Email' => $memberA->Email
+		));
+
+		$this->assertFalse(
+			$fail,
+			'Member_Validator must fail when trying to create new Member with existing Email.'
+		);
+
+		// populate the form with values from another member
+		$form->loadDataFrom($memberB);
+
+		// Assign the validator to an existing member
+		// (this is basically the same as passing the member ID with the form data)
+		$validator->setForMember($memberB);
+
+		// Simulate update of a member via form and use an existing member Email
+		$fail = $validator->php(array(
+			'FirstName' => 'Test',
+			'Email' => $memberA->Email
+		));
+
+		// Simulate update to a new Email address
+		$pass1 = $validator->php(array(
+			'FirstName' => 'Test',
+			'Email' => 'membervalidatortest@testing.com'
+		));
+
+		// Pass in the same Email address that the member already has. Ensure that case is valid
+		$pass2 = $validator->php(array(
+			'FirstName' => 'Test',
+			'Surname' => 'User',
+			'Email' => $memberB->Email
+		));
+
+		$this->assertFalse(
+			$fail,
+			'Member_Validator must fail when trying to update existing member with existing Email.'
+		);
+
+		$this->assertTrue(
+			$pass1,
+			'Member_Validator must pass when Email is updated to a value that\'s not in use.'
+		);
+
+		$this->assertTrue(
+			$pass2,
+			'Member_Validator must pass when Member updates his own Email to the already existing value.'
+		);
+	}
+
+	public function testMemberValidatorWithExtensions()
+	{
+		// clear custom requirements for this test
+		Config::inst()->update('Member_Validator', 'customRequired', null);
+
+		// create a blank form
+		$form = new MemberTest_ValidatorForm();
+
+		// Test extensions
+		Member_Validator::add_extension('MemberTest_MemberValidator_SurnameMustMatchFirstNameExtension');
+		$validator = new Member_Validator();
+		$validator->setForm($form);
+
+		// This test should fail, since the extension enforces FirstName == Surname
+		$fail = $validator->php(array(
+			'FirstName' => 'Test',
+			'Surname' => 'User',
+			'Email' => 'test-member-validator-extension@testing.com'
+		));
+
+		$pass = $validator->php(array(
+			'FirstName' => 'Test',
+			'Surname' => 'Test',
+			'Email' => 'test-member-validator-extension@testing.com'
+		));
+
+		$this->assertFalse(
+			$fail,
+			'Member_Validator must fail because of added extension.'
+		);
+
+		$this->assertTrue(
+			$pass,
+			'Member_Validator must succeed, since it meets all requirements.'
+		);
+
+		// Add another extension that always fails. This ensures that all extensions are considered in the validation
+		Member_Validator::add_extension('MemberTest_MemberValidator_AlwaysFailsExtension');
+		$validator = new Member_Validator();
+		$validator->setForm($form);
+
+		// Even though the data is valid, This test should still fail, since one extension always returns false
+		$fail = $validator->php(array(
+			'FirstName' => 'Test',
+			'Surname' => 'Test',
+			'Email' => 'test-member-validator-extension@testing.com'
+		));
+
+		$this->assertFalse(
+			$fail,
+			'Member_Validator must fail because of added extensions.'
+		);
+
+		// Remove added extensions
+		Member_Validator::remove_extension('MemberTest_MemberValidator_AlwaysFailsExtension');
+		Member_Validator::remove_extension('MemberTest_MemberValidator_SurnameMustMatchFirstNameExtension');
+	}
+
+	public function testCustomMemberValidator()
+	{
+		// clear custom requirements for this test
+		Config::inst()->update('Member_Validator', 'customRequired', null);
+
 		$member = $this->objFromFixture('Member', 'admin');
 
 		$form = new MemberTest_ValidatorForm();
@@ -792,7 +1065,7 @@ class MemberTest extends FunctionalTest {
 			'Surname' => ''
 		));
 
-		$this->assertTrue($pass, 'Validator requires on FirstName and Email');
+		$this->assertTrue($pass, 'Validator requires a FirstName and Email');
 		$this->assertFalse($fail, 'Missing FirstName');
 
 		$ext = new MemberTest_ValidatorExtension();
@@ -816,6 +1089,16 @@ class MemberTest extends FunctionalTest {
 		));
 
 		$this->assertTrue($fail, 'Passes with email and surname now (no firstname)');
+	}
+
+	public function testCurrentUser() {
+		$this->assertNull(Member::currentUser());
+
+		$adminMember = $this->objFromFixture('Member', 'admin');
+		$this->logInAs($adminMember);
+
+		$userFromSession = Member::currentUser();
+		$this->assertEquals($adminMember->ID, $userFromSession->ID);
 	}
 
 }
@@ -847,6 +1130,30 @@ class MemberTest_ValidatorExtension extends DataExtension implements TestOnly {
 	public function updateValidator(&$validator) {
 		$validator->addRequiredField('Surname');
 		$validator->removeRequiredField('FirstName');
+	}
+}
+
+/**
+ * Extension that adds additional validation criteria
+ * @package framework
+ * @subpackage tests
+ */
+class MemberTest_MemberValidator_SurnameMustMatchFirstNameExtension extends DataExtension implements TestOnly
+{
+	public function updatePHP($data, $form) {
+		return $data['FirstName'] == $data['Surname'];
+	}
+}
+
+/**
+ * Extension that adds additional validation criteria
+ * @package framework
+ * @subpackage tests
+ */
+class MemberTest_MemberValidator_AlwaysFailsExtension extends DataExtension implements TestOnly
+{
+	public function updatePHP($data, $form) {
+		return false;
 	}
 }
 

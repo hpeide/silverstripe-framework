@@ -59,7 +59,7 @@ class GridFieldAddExistingAutocompleter
 	 *  	'Team.Name'
 	 *  )
 	 *
-	 * @var Array
+	 * @var array
 	 */
 	protected $searchFields = array();
 
@@ -69,7 +69,7 @@ class GridFieldAddExistingAutocompleter
 	protected $resultsFormat = '$Title';
 
 	/**
-	 * @var String Text shown on the search field, instructing what to search for.
+	 * @var string Text shown on the search field, instructing what to search for.
 	 */
 	protected $placeholderText;
 
@@ -79,7 +79,7 @@ class GridFieldAddExistingAutocompleter
 	protected $resultsLimit = 20;
 
 	/**
-	 *
+	 * @param string $targetFragment
 	 * @param array $searchFields Which fields on the object in the list should be searched
 	 */
 	public function __construct($targetFragment = 'before', $searchFields = null) {
@@ -90,27 +90,29 @@ class GridFieldAddExistingAutocompleter
 	/**
 	 *
 	 * @param GridField $gridField
-	 * @return string - HTML
+	 * @return string[] - HTML
 	 */
 	public function getHTMLFragments($gridField) {
 		$dataClass = $gridField->getList()->dataClass();
 
 		$forTemplate = new ArrayData(array());
-		$forTemplate->Fields = new ArrayList();
+		$forTemplate->Fields = new FieldList();
 
 		$searchField = new TextField('gridfield_relationsearch', _t('GridField.RelationSearch', "Relation search"));
 
 		$searchField->setAttribute('data-search-url', Controller::join_links($gridField->Link('search')));
 		$searchField->setAttribute('placeholder', $this->getPlaceholderText($dataClass));
-		$searchField->addExtraClass('relation-search no-change-track');
+		$searchField->addExtraClass('relation-search no-change-track action_gridfield_relationsearch');
 
 		$findAction = new GridField_FormAction($gridField, 'gridfield_relationfind',
 			_t('GridField.Find', "Find"), 'find', 'find');
 		$findAction->setAttribute('data-icon', 'relationfind');
+		$findAction->addExtraClass('action_gridfield_relationfind');
 
 		$addAction = new GridField_FormAction($gridField, 'gridfield_relationadd',
 			_t('GridField.LinkExisting', "Link Existing"), 'addto', 'addto');
 		$addAction->setAttribute('data-icon', 'chain--plus');
+		$addAction->addExtraClass('action_gridfield_relationadd');
 
 		// If an object is not found, disable the action
 		if(!is_int($gridField->State->GridFieldAddRelation(null))) {
@@ -120,6 +122,9 @@ class GridFieldAddExistingAutocompleter
 		$forTemplate->Fields->push($searchField);
 		$forTemplate->Fields->push($findAction);
 		$forTemplate->Fields->push($addAction);
+		if($form = $gridField->getForm()) {
+			$forTemplate->Fields->setForm($form);
+		}
 
 		return array(
 			$this->targetFragment => $forTemplate->renderWith($this->itemClass)
@@ -215,17 +220,20 @@ class GridFieldAddExistingAutocompleter
 			->limit($this->getResultsLimit());
 
 		$json = array();
-		$originalSourceFileComments = Config::inst()->get('SSViewer', 'source_file_comments');
+		Config::nest();
 		Config::inst()->update('SSViewer', 'source_file_comments', false);
+		$viewer = SSViewer::fromString($this->resultsFormat);
 		foreach($results as $result) {
-			$json[$result->ID] = html_entity_decode(SSViewer::fromString($this->resultsFormat)->process($result));
+			$json[$result->ID] = html_entity_decode($viewer->process($result));
 		}
-		Config::inst()->update('SSViewer', 'source_file_comments', $originalSourceFileComments);
+		Config::unnest();
 		return Convert::array2json($json);
 	}
 
 	/**
-	 * @param String
+	 * @param string $format
+	 *
+	 * @return $this
 	 */
 	public function setResultsFormat($format) {
 		$this->resultsFormat = $format;
@@ -233,7 +241,7 @@ class GridFieldAddExistingAutocompleter
 	}
 
 	/**
-	 * @return String
+	 * @return string
 	 */
 	public function getResultsFormat() {
 		return $this->resultsFormat;
@@ -247,10 +255,11 @@ class GridFieldAddExistingAutocompleter
 	 */
 	public function setSearchList(SS_List $list) {
 		$this->searchList = $list;
+		return $this;
 	}
 
 	/**
-	 * @param Array
+	 * @param array $fields
 	 */
 	public function setSearchFields($fields) {
 		$this->searchFields = $fields;
@@ -258,7 +267,7 @@ class GridFieldAddExistingAutocompleter
 	}
 
 	/**
-	 * @return Array
+	 * @return array
 	 */
 	public function getSearchFields() {
 		return $this->searchFields;
@@ -269,8 +278,8 @@ class GridFieldAddExistingAutocompleter
 	 * Falls back to {@link DataObject->summaryFields()} if
 	 * no custom search fields are defined.
 	 *
-	 * @param  String the class name
-	 * @return Array|null names of the searchable fields
+	 * @param  string $dataClass the class name
+	 * @return array|null names of the searchable fields
 	 */
 	public function scaffoldSearchFields($dataClass) {
 		$obj = singleton($dataClass);
@@ -306,8 +315,9 @@ class GridFieldAddExistingAutocompleter
 	}
 
 	/**
-	 * @param String The class of the object being searched for
-	 * @return String
+	 * @param string $dataClass The class of the object being searched for
+	 *
+	 * @return string
 	 */
 	public function getPlaceholderText($dataClass) {
 		$searchFields = ($this->getSearchFields())
@@ -339,10 +349,13 @@ class GridFieldAddExistingAutocompleter
 	}
 
 	/**
-	 * @param String
+	 * @param string $text
+	 *
+	 * @return $this
 	 */
 	public function setPlaceholderText($text) {
 		$this->placeholderText = $text;
+		return $this;
 	}
 
 	/**
@@ -356,8 +369,11 @@ class GridFieldAddExistingAutocompleter
 
 	/**
 	 * @param int $limit
+	 *
+	 * @return $this
 	 */
 	public function setResultsLimit($limit) {
 		$this->resultsLimit = $limit;
+		return $this;
 	}
 }

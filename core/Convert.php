@@ -126,24 +126,27 @@ class Convert {
 	}
 
 	/**
-	 * Encode a value as a JSON encoded string.
+	 * Encode a value as a JSON encoded string. You can optionally pass a bitmask of
+	 * JSON constants as options through to the encode function.
 	 *
-	 * @param mixed $val Value to be encoded
-	 * @return string JSON encoded string
+	 * @param  mixed $val     Value to be encoded
+	 * @param  int   $options Optional bitmask of JSON constants
+	 * @return string 		  JSON encoded string
 	 */
-	public static function raw2json($val) {
-		return json_encode($val);
+	public static function raw2json($val, $options = 0) {
+		return json_encode($val, $options);
 	}
 
 	/**
 	 * Encode an array as a JSON encoded string.
-	 * THis is an alias to {@link raw2json()}
+	 * This is an alias to {@link raw2json()}
 	 *
-	 * @param array $val Array to convert
-	 * @return string JSON encoded string
+	 * @param  array  $val     Array to convert
+	 * @param  int    $options Optional bitmask of JSON constants
+	 * @return string          JSON encoded string
 	 */
-	public static function array2json($val) {
-		return self::raw2json($val);
+	public static function array2json($val, $options = 0) {
+		return self::raw2json($val, $options);
 	}
 
 	/**
@@ -331,10 +334,10 @@ class Convert {
 
 		// Expand hyperlinks
 		if(!$preserveLinks && !$config['PreserveLinks']) {
-			$data = preg_replace_callback('/<a[^>]*href\s*=\s*"([^"]*)">(.*?)<\/a>/i', function($matches) {
+			$data = preg_replace_callback('/<a[^>]*href\s*=\s*"([^"]*)">(.*?)<\/a>/ui', function($matches) {
 				return Convert::html2raw($matches[2]) . "[$matches[1]]";
 			}, $data);
-			$data = preg_replace_callback('/<a[^>]*href\s*=\s*([^ ]*)>(.*?)<\/a>/i', function($matches) {
+			$data = preg_replace_callback('/<a[^>]*href\s*=\s*([^ ]*)>(.*?)<\/a>/ui', function($matches) {
 				return Convert::html2raw($matches[2]) . "[$matches[1]]";
 			}, $data);
 		}
@@ -347,13 +350,13 @@ class Convert {
 
 		// Compress whitespace
 		if($config['CompressWhitespace']) {
-			$data = preg_replace("/\s+/", " ", $data);
+			$data = preg_replace("/\s+/u", " ", $data);
 		}
 
 		// Parse newline tags
-		$data = preg_replace("/\s*<[Hh][1-6]([^A-Za-z0-9>][^>]*)?> */", "\n\n", $data);
-		$data = preg_replace("/\s*<[Pp]([^A-Za-z0-9>][^>]*)?> */", "\n\n", $data);
-		$data = preg_replace("/\s*<[Dd][Ii][Vv]([^A-Za-z0-9>][^>]*)?> */", "\n\n", $data);
+		$data = preg_replace("/\s*<[Hh][1-6]([^A-Za-z0-9>][^>]*)?> */u", "\n\n", $data);
+		$data = preg_replace("/\s*<[Pp]([^A-Za-z0-9>][^>]*)?> */u", "\n\n", $data);
+		$data = preg_replace("/\s*<[Dd][Ii][Vv]([^A-Za-z0-9>][^>]*)?> */u", "\n\n", $data);
 		$data = preg_replace("/\n\n\n+/", "\n\n", $data);
 
 		$data = preg_replace("/<[Bb][Rr]([^A-Za-z0-9>][^>]*)?> */", "\n", $data);
@@ -423,7 +426,7 @@ class Convert {
 	}
 
 	/**
-	 * Encode a value into a string that can be used as part of a filename. 
+	 * Encode a value into a string that can be used as part of a filename.
 	 * All string data must be UTF-8 encoded.
 	 *
 	 * @param mixed $val Value to be encoded

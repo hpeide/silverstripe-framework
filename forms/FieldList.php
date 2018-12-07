@@ -47,14 +47,23 @@ class FieldList extends ArrayList {
 	/**
 	 * Return a sequential set of all fields that have data.  This excludes wrapper composite fields
 	 * as well as heading / help text fields.
+	 *
+	 * @return array
 	 */
 	public function dataFields() {
-		if(!$this->sequentialSet) $this->collateDataFields($this->sequentialSet);
+		if(!$this->sequentialSet) {
+			$this->collateDataFields($this->sequentialSet);
+		}
 		return $this->sequentialSet;
 	}
 
+	/**
+	 * @return array
+	 */
 	public function saveableFields() {
-		if(!$this->sequentialSaveableSet) $this->collateDataFields($this->sequentialSaveableSet, true);
+		if(!$this->sequentialSaveableSet) {
+			$this->collateDataFields($this->sequentialSaveableSet, true);
+		}
 		return $this->sequentialSaveableSet;
 	}
 
@@ -64,13 +73,20 @@ class FieldList extends ArrayList {
 	}
 
 	protected function collateDataFields(&$list, $saveableOnly = false) {
+		// Initialise list
+		if (!isset($list)) {
+			$list = array();
+		}
+		/** @var FormField $field */
 		foreach($this as $field) {
-			if($field->isComposite()) $field->collateDataFields($list, $saveableOnly);
+			if($field->isComposite()) {
+				$field->collateDataFields($list, $saveableOnly);
+			}
 
 			if($saveableOnly) {
-				$isIncluded =  ($field->hasData() && !$field->isReadonly() && !$field->isDisabled());
+				$isIncluded = $field->canSubmitValue();
 			} else {
-				$isIncluded =  ($field->hasData());
+				$isIncluded = $field->hasData();
 			}
 			if($isIncluded) {
 				$name = $field->getName();
@@ -115,9 +131,9 @@ class FieldList extends ArrayList {
 	 * This is most commonly used when overloading getCMSFields()
 	 *
 	 * @param string $tabName The name of the tab or tabset.  Subtabs can be referred to as TabSet.Tab
-	 *                        or TabSet.Tab.Subtab.
-	 * This function will create any missing tabs.
+	 *                        or TabSet.Tab.Subtab. This function will create any missing tabs.
 	 * @param array $fields An array of {@link FormField} objects.
+	 * @param string $name Name of the field to insert before (optional)
 	 */
 	public function addFieldsToTab($tabName, $fields, $insertBefore = null) {
 		$this->flushFieldsCache();
@@ -312,7 +328,7 @@ class FieldList extends ArrayList {
 	 * Returns a named field.
 	 * You can use dot syntax to get fields from child composite fields
 	 *
-	 * @todo Implement similiarly to dataFieldByName() to support nested sets - or merge with dataFields()
+	 * @todo Implement similarly to dataFieldByName() to support nested sets - or merge with dataFields()
 	 */
 	public function fieldByName($name) {
 		$name = $this->rewriteTabPath($name);
@@ -356,6 +372,7 @@ class FieldList extends ArrayList {
 	 *
 	 * @param string $name Name of the field to insert before
 	 * @param FormField $item The form field to insert
+	 * @return FormField|false
 	 */
 	public function insertBefore($name, $item) {
 		// Backwards compatibility for order of arguments
@@ -385,6 +402,7 @@ class FieldList extends ArrayList {
 	 *
 	 * @param string $name Name of the field to insert after
 	 * @param FormField $item The form field to insert
+	 * @return FormField|false
 	 */
 	public function insertAfter($name, $item) {
 		// Backwards compatibility for order of arguments
@@ -410,16 +428,27 @@ class FieldList extends ArrayList {
 	}
 
 	/**
-	 * Push a single field into this FieldList instance.
+	 * Push a single field onto the end of this FieldList instance.
 	 *
 	 * @param FormField $item The FormField to add
-	 * @param string $key An option array key (field name)
 	 */
-	public function push($item, $key = null) {
+	public function push($item) {
 		$this->onBeforeInsert($item);
 		$item->setContainerFieldList($this);
 
-		return parent::push($item, $key);
+		return parent::push($item);
+	}
+
+	/**
+	 * Push a single field onto the beginning of this FieldList instance.
+	 *
+	 * @param FormField $item The FormField to add
+	 */
+	public function unshift($item) {
+		$this->onBeforeInsert($item);
+		$item->setContainerFieldList($this);
+
+		return parent::unshift($item);
 	}
 
 	/**
@@ -537,7 +566,12 @@ class FieldList extends ArrayList {
 	public function makeFieldReadonly($field) {
 		$fieldName = ($field instanceof FormField) ? $field->getName() : $field;
 		$srcField = $this->dataFieldByName($fieldName);
-		$this->replaceField($fieldName, $srcField->performReadonlyTransformation());
+        if($srcField) {
+        	$this->replaceField($fieldName, $srcField->performReadonlyTransformation());
+        }
+        else {
+        	user_error("Trying to make field '$fieldName' readonly, but it does not exist in the list",E_USER_WARNING);
+        }
 	}
 
 	/**
@@ -629,8 +663,8 @@ class FieldList extends ArrayList {
 	 * Support function for backwards compatibility purposes.
 	 * Caution: Volatile API, might be removed in 3.1 or later.
 	 *
-	 * @param  String $tabname Path to a tab, e.g. "Root.Content.Main"
-	 * @return String Rewritten path, based on {@link tabPathRewrites}
+	 * @param  string $name Path to a tab, e.g. "Root.Content.Main"
+	 * @return string Rewritten path, based on {@link tabPathRewrites}
 	 */
 	protected function rewriteTabPath($name) {
 		$isRunningTest = (class_exists('SapphireTest', false) && SapphireTest::is_running_test());

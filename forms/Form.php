@@ -355,8 +355,11 @@ class Form extends RequestHandler {
 			$vars = $request->requestVars();
 		}
 
+		// Ensure we only process saveable fields (non structural, readonly, or disabled)
+		$allowedFields = array_keys($this->Fields()->saveableFields());
+
 		// Populate the form
-		$this->loadDataFrom($vars, true);
+		$this->loadDataFrom($vars, true, $allowedFields);
 
 		// Protection against CSRF attacks
 		$token = $this->getSecurityToken();
@@ -416,7 +419,8 @@ class Form extends RequestHandler {
 			$this->controller->hasMethod($funcName)
 			&& !$this->controller->checkAccessAction($funcName)
 			// If a button exists, allow it on the controller
-			&& !$this->actions->dataFieldByName('action_' . $funcName)
+			// buttonClicked() validates that the action set above is valid
+			&& !$this->buttonClicked()
 		) {
 			return $this->httpError(
 				403,
@@ -475,16 +479,24 @@ class Form extends RequestHandler {
 	 * @return bool
 	 */
 	public function checkAccessAction($action) {
-		return (
-			parent::checkAccessAction($action)
-			// Always allow actions which map to buttons. See httpSubmission() for further access checks.
-			|| $this->actions->dataFieldByName('action_' . $action)
-			// Always allow actions on fields
-			|| (
-				$field = $this->checkFieldsForAction($this->Fields(), $action)
-				&& $field->checkAccessAction($action)
-			)
-		);
+		if (parent::checkAccessAction($action)) {
+			return true;
+		}
+
+		$actions = $this->getAllActions();
+ 		foreach ($actions as $formAction) {
+			if ($formAction->actionName() === $action) {
+				return true;
+			}
+		}
+
+		// Always allow actions on fields
+		$field = $this->checkFieldsForAction($this->Fields(), $action);
+		if ($field && $field->checkAccessAction($action)) {
+			return true;
+		}
+
+		return false;
 	}
 
 	/**
@@ -842,12 +854,16 @@ class Form extends RequestHandler {
 		}
 
 		// If we need to disable cache, do it
-		if ($needsCacheDisabled) HTTP::set_cache_age(0);
+		if ($needsCacheDisabled) {
+			HTTPCacheControl::singleton()->disableCache(true);
+		}
 
 		$attrs = $this->getAttributes();
 
 		// Remove empty
-		$attrs = array_filter((array)$attrs, create_function('$v', 'return ($v || $v === 0);'));
+		$attrs = array_filter((array)$attrs, function($v) {
+		    return ($v || $v === 0);
+        });
 
 		// Remove excluded
 		if($exclude) $attrs = array_diff_key($attrs, array_flip($exclude));
@@ -873,7 +889,7 @@ class Form extends RequestHandler {
 	/**
 	 * Set the target of this form to any value - useful for opening the form contents in a new window or refreshing
 	 * another frame
-	 * 
+	 *
 	 * @param string|FormTemplateHelper
 	 */
 	public function setTemplateHelper($helper) {
@@ -1056,11 +1072,18 @@ class Form extends RequestHandler {
 	public function FormAction() {
 		if ($this->formActionPath) {
 			return $this->formActionPath;
-		} elseif($this->controller->hasMethod("FormObjectLink")) {
-			return $this->controller->FormObjectLink($this->name);
-		} else {
-			return Controller::join_links($this->controller->Link(), $this->name);
 		}
+
+		// Respect FormObjectLink() method
+		if($this->controller->hasMethod("FormObjectLink")) {
+			$link = $this->controller->FormObjectLink($this->getName());
+		} else {
+			$link = Controller::join_links($this->controller->Link(), $this->getName());
+		}
+
+		// Join with action and decorate
+        $this->extend('updateLink', $link);
+        return $link;
 	}
 
 	/**
@@ -1303,6 +1326,18 @@ class Form extends RequestHandler {
 				// Load errors into session and post back
 				$data = $this->getData();
 
+				// Encode validation messages as XML before saving into session state
+				// As per Form::addErrorMessage()
+				$errors = array_map(function($error) {
+					// Encode message as XML by default
+					if($error['message'] instanceof DBField) {
+						$error['message'] = $error['message']->forTemplate();;
+					} else {
+						$error['message'] = Convert::raw2xml($error['message']);
+					}
+					return $error;
+				}, $errors);
+
 				Session::set("FormInfo.{$this->FormName()}.errors", $errors);
 				Session::set("FormInfo.{$this->FormName()}.data", $data);
 
@@ -1358,7 +1393,7 @@ class Form extends RequestHandler {
 	 *  For backwards compatibility reasons, this parameter can also be set to === true, which is the same as passing
 	 *  CLEAR_MISSING
 	 *
-	 * @param FieldList $fieldList An optional list of fields to process.  This can be useful when you have a
+	 * @param array $fieldList An optional list of fields to process.  This can be useful when you have a
 	 * form that has some fields that save to one object, and some that save to another.
 	 * @return Form
 	 */
@@ -1380,6 +1415,7 @@ class Form extends RequestHandler {
 		if(is_object($data)) $this->record = $data;
 
 		// dont include fields without data
+		/** @var FormField[] $dataFields */
 		$dataFields = $this->Fields()->dataFields();
 		if($dataFields) foreach($dataFields as $field) {
 			$name = $field->getName();
@@ -1412,15 +1448,31 @@ class Form extends RequestHandler {
 					$val = $data[$name];
 				}
 				// If field is in array-notation we need to access nested data
-				else if(strpos($name,'[')) {
-					// First encode data using PHP's method of converting nested arrays to form data
-					$flatData = urldecode(http_build_query($data));
-					// Then pull the value out from that flattened string
-					preg_match('/' . addcslashes($name,'[]') . '=([^&]*)/', $flatData, $matches);
+				else if(preg_match_all('/(.*)\[(.*)\]/U', $name, $matches)) {
+					//discard first match which is just the whole string
+					array_shift($matches);
 
-					if (isset($matches[1])) {
-						$exists = true;
-						$val = $matches[1];
+					$keys = array_pop($matches);
+					$name = array_shift($matches);
+					$name = array_shift($name);
+
+					if (array_key_exists($name, $data)) {
+						$tmpData = &$data[$name];
+						// drill down into the data array looking for the corresponding value
+						foreach ($keys as $arrayKey) {
+							if ($arrayKey !== '') {
+								$tmpData = &$tmpData[$arrayKey];
+							} else {
+								//empty square brackets means new array
+								if (is_array($tmpData)) {
+									$tmpData = array_shift($tmpData);
+								}
+							}
+						}
+						if ($tmpData) {
+							$val = $tmpData;
+							$exists = true;
+						}
 					}
 				}
 			}
@@ -1623,11 +1675,31 @@ class Form extends RequestHandler {
 	 * @return FormAction
 	 */
 	public function buttonClicked() {
-		foreach($this->actions->dataFields() as $action) {
-			if($action->hasMethod('actionname') && $this->buttonClickedFunc == $action->actionName()) {
+		$actions = $this->getAllActions();
+ 		foreach ($actions as $action) {
+			if ($this->buttonClickedFunc === $action->actionName()) {
 				return $action;
 			}
 		}
+
+		return null;
+	}
+
+	/**
+	 * Get a list of all actions, including those in the main "fields" FieldList
+	 *
+	 * @return array
+	 */
+	protected function getAllActions() {
+		$fields = $this->fields->dataFields() ?: array();
+		$actions = $this->actions->dataFields() ?: array();
+
+		$fieldsAndActions = array_merge($fields, $actions);
+		$actions = array_filter($fieldsAndActions, function($fieldOrAction) {
+			return $fieldOrAction instanceof FormAction;
+		});
+
+		return $actions;
 	}
 
 	/**
@@ -1639,7 +1711,7 @@ class Form extends RequestHandler {
 	public function defaultAction() {
 		if($this->hasDefaultAction && $this->actions) {
 			return $this->actions->First();
-	}
+		}
 	}
 
 	/**

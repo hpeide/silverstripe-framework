@@ -115,7 +115,7 @@ class FileField extends FormField {
 			// assume that the file is connected via a has-one
 			$hasOnes = $record->hasOne($this->name);
 			// try to create a file matching the relation
-			$file = (is_string($hasOnes)) ? Object::create($hasOnes) : new $fileClass();
+			$file = (is_string($hasOnes)) ? SS_Object::create($hasOnes) : new $fileClass();
 		} else if($record instanceof File) {
 			$file = $record;
 		} else {
@@ -148,7 +148,7 @@ class FileField extends FormField {
 	/**
 	 * Get custom validator for this field
 	 *
-	 * @param Upload_Validator $validator
+	 * @return Upload_Validator
 	 */
 	public function getValidator() {
 		return $this->upload->getValidator();
@@ -158,7 +158,7 @@ class FileField extends FormField {
 	 * Set custom validator for this field
 	 *
 	 * @param Upload_Validator $validator
-	 * @return FileField Self reference
+	 * @return $this
 	 */
 	public function setValidator($validator) {
 		$this->upload->setValidator($validator);
@@ -169,7 +169,7 @@ class FileField extends FormField {
 	 * Sets the upload folder name
 	 *
 	 * @param string $folderName
-	 * @return FileField Self reference
+	 * @return $this
 	 */
 	public function setFolderName($folderName) {
 		$this->folderName = $folderName;

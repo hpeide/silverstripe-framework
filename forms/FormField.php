@@ -165,6 +165,14 @@ class FormField extends RequestHandler {
 	protected $attributes = array();
 
 	/**
+	 * @config
+	 * @var array
+	 */
+	private static $casting = array(
+		'Value' => 'Text',
+	);
+
+	/**
 	 * Takes a field name and converts camelcase to spaced words. Also resolves combined field
 	 * names with dot syntax to spaced words.
 	 *
@@ -266,7 +274,9 @@ class FormField extends RequestHandler {
 	 * @return string
 	 */
 	public function Link($action = null) {
-		return Controller::join_links($this->form->FormAction(), 'field/' . $this->name, $action);
+		$link = Controller::join_links($this->form->FormAction(), 'field/' . $this->name, $action);
+		$this->extend('updateLink', $link, $action);
+        return $link;
 	}
 
 	/**
@@ -463,6 +473,8 @@ class FormField extends RequestHandler {
 			$classes[] .= 'holder-' . $this->MessageType();
 		}
 
+		$this->extend('updateExtraClass', $classes);
+
 		return implode(' ', $classes);
 	}
 
@@ -503,7 +515,7 @@ class FormField extends RequestHandler {
 	}
 
 	/**
-	 * Set an HTML attribute on the field element, mostly an <input> tag.
+	 * Set an HTML attribute on the field element, mostly an input tag.
 	 *
 	 * Some attributes are best set through more specialized methods, to avoid interfering with
 	 * built-in behaviour:
@@ -643,7 +655,6 @@ class FormField extends RequestHandler {
 	 * Set the field value.
 	 *
 	 * @param mixed $value
-	 * @param null|array|DataObject $data {@see Form::loadDataFrom}
 	 *
 	 * @return $this
 	 */
@@ -839,7 +850,16 @@ class FormField extends RequestHandler {
 
 		$this->extend('onBeforeRender', $this);
 
-		return $context->renderWith($this->getTemplates());
+		$result = $context->renderWith($this->getTemplates());
+
+		// Trim whitespace from the result, so that trailing newlines are supressed. Works for strings and HTMLText values
+		if(is_string($result)) {
+			$result = trim($result);
+		} else if($result instanceof DBField) {
+			$result->setValue(trim($result->getValue()));
+		}
+
+		return $result;
 	}
 
 	/**
@@ -1084,7 +1104,7 @@ class FormField extends RequestHandler {
 	 *
 	 * The field type is the class name with the word Field dropped off the end, all lowercase.
 	 *
-	 * It's handy for assigning HTML classes. Doesn't signify the <input type> attribute.
+	 * It's handy for assigning HTML classes. Doesn't signify the input type attribute.
 	 *
 	 * @see {link getAttributes()}.
 	 *
@@ -1126,7 +1146,7 @@ class FormField extends RequestHandler {
 	/**
 	 * Describe this field, provide help text for it.
 	 *
-	 * By default, renders as a <span class="description"> underneath the form field.
+	 * By default, renders as a span class="description" underneath the form field.
 	 *
 	 * @param string $description
 	 *
@@ -1258,6 +1278,15 @@ class FormField extends RequestHandler {
 		$field->dontEscape = $this->dontEscape;
 
 		return $field;
+	}
+
+	/**
+	 * Determine if the value of this formfield accepts front-end submitted values and is saveable.
+	 *
+	 * @return bool
+	 */
+	public function canSubmitValue() {
+		return $this->hasData() && !$this->isReadonly() && !$this->isDisabled();
 	}
 
 }

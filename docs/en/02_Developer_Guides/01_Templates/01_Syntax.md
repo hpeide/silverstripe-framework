@@ -412,7 +412,7 @@ When in a particular scope, `$Up` takes the scope back to the previous level.
 	<% end_loop %>
 
 Given the following structure, it will output the text.
-	
+
 	My Page
 	|
 	+-+ Child 1
@@ -427,6 +427,16 @@ Given the following structure, it will output the text.
 	Page 'Grandchild 1' is a grandchild of 'My Page'
 	Page 'Child 2' is a child of 'MyPage'
 
+<div class="notice" markdown="1">
+Additional selectors implicitely change the scope so you need to put additional `$Up` to get what you expect.
+</div>
+
+	:::ss
+	<h1>Children of '$Title'</h1>
+	<% loop $Children.Sort('Title').First %>
+		<%-- We have two additional selectors in the loop expression so... --%> 
+		<p>Page '$Title' is a child of '$Up.Up.Up.Title'</p>
+	<% end_loop %>
 
 #### Top
 
@@ -444,8 +454,6 @@ page. The  previous example could be rewritten to use the following syntax.
 		<% end_loop %>
 	<% end_loop %>
 
-
-
 ### With
 
 The `<% with %>` tag lets you change into a new scope. Consider the following example:
@@ -458,7 +466,7 @@ The `<% with %>` tag lets you change into a new scope. Consider the following ex
 This is functionalty the same as the following:
 
 	:::ss
-	Hello, $CurrentMember.FirstName, welcome back. Yout current balance is $CurrentMember.Balance
+	Hello, $CurrentMember.FirstName, welcome back. Your current balance is $CurrentMember.Balance
 
 Notice that the first example is much tidier, as it removes the repeated use of the `$CurrentMember` accessor.
 
@@ -466,7 +474,12 @@ Outside the `<% with %>.`, we are in the page scope. Inside it, we are in the sc
 refer directly to properties and methods of the [api:Member] object. `$FirstName` inside the scope is equivalent to 
 `$CurrentMember.FirstName`.
 
+### Me
 
+`$Me` outputs the current object in scope. This will call the `forTemplate` of the object.
+
+	:::ss
+	$Me
 
 ## Comments
 

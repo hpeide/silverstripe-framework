@@ -8,7 +8,7 @@
  * @subpackage model
  */
 class SQLSelect extends SQLConditionalExpression {
-	
+
 	/**
 	 * An array of SELECT fields, keyed by an optional alias.
 	 *
@@ -334,10 +334,12 @@ class SQLSelect extends SQLConditionalExpression {
 
 					// Move the clause to the select fragment, substituting a placeholder column in the sort fragment.
 					$clause = trim($clause);
-					$column = "_SortColumn{$i}";
+					do {
+						$column = "_SortColumn{$i}";
+						$i++;
+					} while(array_key_exists('"' . $column . '"', $this->orderby));
 					$this->selectField($clause, $column);
 					$clause = '"' . $column . '"';
-					$i++;
 				}
 				$orderby[$clause] = $dir;
 			}
@@ -542,7 +544,7 @@ class SQLSelect extends SQLConditionalExpression {
 				$countQuery->setFrom(array('(' . $clone->sql($innerParameters) . ') all_distinct'));
 				$sql = $countQuery->sql($parameters); // $parameters should be empty
 				$result = DB::prepared_query($sql, $innerParameters);
-				return $result->value();
+				return (int)$result->value();
 			} else {
 				$clone->setSelect(array("count(*)"));
 			}
@@ -551,7 +553,7 @@ class SQLSelect extends SQLConditionalExpression {
 		}
 
 		$clone->setGroupBy(array());
-		return $clone->execute()->value();
+		return (int)$clone->execute()->value();
 	}
 
 	/**
@@ -568,14 +570,12 @@ class SQLSelect extends SQLConditionalExpression {
 
 
 	/**
-	 * Return the number of rows in this query if the limit were removed.  Useful in paged data sets.
-	 *
-	 * @todo Respect HAVING and GROUPBY, which can affect the result-count
+	 * Return the number of rows in this query, respecting limit and offset.
 	 *
 	 * @param string $column Quoted, escaped column name
 	 * @return int
 	 */
-	public function count( $column = null) {
+	public function count($column = null) {
 		// we can't clear the select if we're relying on its output by a HAVING clause
 		if(!empty($this->having)) {
 			$records = $this->execute();
@@ -596,7 +596,7 @@ class SQLSelect extends SQLConditionalExpression {
 		$clone->orderby = null;
 		$clone->groupby = null;
 
-		$count = $clone->execute()->value();
+		$count = (int)$clone->execute()->value();
 		// If there's a limit set, then that limit is going to heavily affect the count
 		if($this->limit) {
 			if($this->limit['limit'] !== null && $count >= ($this->limit['start'] + $this->limit['limit'])) {

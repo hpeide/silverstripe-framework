@@ -54,9 +54,7 @@ class CheckboxSetField extends OptionsetField {
 			'Options' => $this->getOptions()
 		));
 
-		return $this->customise($properties)->renderWith(
-			$this->getTemplates()
-		);
+		return FormField::Field($properties);
 	}
 
 	/**
@@ -134,11 +132,14 @@ class CheckboxSetField extends OptionsetField {
 		}
 
 		foreach($source as $value => $item) {
+			// Ensure $title is cast for template
 			if($item instanceof DataObject) {
 				$value = $item->ID;
-				$title = $item->Title;
-			} else {
+				$title = $item->obj('Title');
+			} elseif ($item instanceof DBField) {
 				$title = $item;
+			} else {
+				$title = DBField::create_field('Text', $item);
 			}
 
 			$itemID = $this->ID() . '_' . preg_replace('/[^a-zA-Z0-9]/', '', $value);
@@ -332,21 +333,22 @@ class CheckboxSetField extends OptionsetField {
 			return true;
 		}
 		$sourceArray = $this->getSourceAsArray();
+		$validValues = array_keys($sourceArray);
 		if (is_array($values)) {
-			if (!array_intersect_key($sourceArray, $values)) {
+			if (!array_intersect($validValues, $values)) {
 				$validator->validationError(
 					$this->name,
 					_t(
 						'CheckboxSetField.SOURCE_VALIDATION',
 						"Please select a value within the list provided. '{value}' is not a valid option",
-						array('value' => implode(' and ', array_diff($sourceArray, $values)))
+						array('value' => implode(' and ', $values))
 					),
 					"validation"
 				);
 				return false;
 			}
 		} else {
-			if (!in_array($this->value, $sourceArray)) {
+			if (!in_array($this->value, $validValues)) {
 				$validator->validationError(
 					$this->name,
 					_t(

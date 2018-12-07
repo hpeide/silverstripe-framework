@@ -79,7 +79,7 @@ class LeftAndMain extends Controller implements PermissionProvider {
 	 * @config
 	 * @var string
 	 */
-	private static $help_link = '//userhelp.silverstripe.org/framework/en/3.2';
+	private static $help_link = '//userhelp.silverstripe.org/framework/en/3.6';
 
 	/**
 	 * @var array
@@ -165,9 +165,22 @@ class LeftAndMain extends Controller implements PermissionProvider {
 	private static $session_keepalive_ping = true;
 
 	/**
+	 * Value of X-Frame-Options header
+	 *
+	 * @config
+	 * @var string
+	 */
+	private static $frame_options = 'SAMEORIGIN';
+
+	/**
 	 * @var PjaxResponseNegotiator
 	 */
 	protected $responseNegotiator;
+
+	/**
+	 * @var SilverStripeVersionProvider
+	 */
+	protected $versionProvider;
 
 	/**
 	 * @param Member $member
@@ -207,6 +220,8 @@ class LeftAndMain extends Controller implements PermissionProvider {
 	 */
 	public function init() {
 		parent::init();
+
+		HTTPCacheControl::singleton()->disableCache();
 
 		Config::inst()->update('SSViewer', 'rewrite_hash_links', false);
 		Config::inst()->update('ContentNegotiator', 'enabled', false);
@@ -379,6 +394,8 @@ class LeftAndMain extends Controller implements PermissionProvider {
 			Requirements::javascript(THIRDPARTY_DIR . '/jquery-entwine/src/jquery.entwine.inspector.js');
 		}
 
+		HtmlEditorConfig::require_js();
+
 		Requirements::css(FRAMEWORK_ADMIN_DIR . '/thirdparty/jquery-notice/jquery.notice.css');
 		Requirements::css(THIRDPARTY_DIR . '/jquery-ui-themes/smoothness/jquery-ui.css');
 		Requirements::css(FRAMEWORK_ADMIN_DIR .'/thirdparty/chosen/chosen/chosen.css');
@@ -388,7 +405,7 @@ class LeftAndMain extends Controller implements PermissionProvider {
 		Requirements::css(FRAMEWORK_DIR . '/css/GridField.css');
 
 		// Browser-specific requirements
-		$ie = isset($_SERVER['HTTP_USER_AGENT']) ? strpos($_SERVER['HTTP_USER_AGENT'], 'MSIE') : false;
+		$ie = isset($_SERVER['HTTP_USER_AGENT']) ? strpos($_SERVER['HTTP_USER_AGENT'], 'MSIE') !== false : false;
 		if($ie) {
 			$version = substr($_SERVER['HTTP_USER_AGENT'], $ie + 5, 3);
 
@@ -444,6 +461,12 @@ class LeftAndMain extends Controller implements PermissionProvider {
 		// The user's theme shouldn't affect the CMS, if, for example, they have
 		// replaced TableListField.ss or Form.ss.
 		Config::inst()->update('SSViewer', 'theme_enabled', false);
+
+		// Set the current reading mode
+		Versioned::reading_stage(Versioned::DRAFT);
+
+        // Set default reading mode to suppress ?stage=Stage querystring params in CMS
+        Versioned::set_default_reading_mode(Versioned::get_reading_mode());
 	}
 
 	public function handleRequest(SS_HTTPRequest $request, DataModel $model = null) {
@@ -467,7 +490,7 @@ class LeftAndMain extends Controller implements PermissionProvider {
 
 		// Prevent clickjacking, see https://developer.mozilla.org/en-US/docs/HTTP/X-Frame-Options
 		$originalResponse = $this->getResponse();
-		$originalResponse->addHeader('X-Frame-Options', 'SAMEORIGIN');
+		$originalResponse->addHeader('X-Frame-Options', $this->config()->frame_options);
 		$originalResponse->addHeader('Vary', 'X-Requested-With');
 
 		return $response;
@@ -542,7 +565,7 @@ class LeftAndMain extends Controller implements PermissionProvider {
 			'/', // trailing slash needed if $action is null!
 			"$action"
 		);
-		$this->extend('updateLink', $link);
+		$this->extend('updateLink', $link, $action);
 		return $link;
 	}
 
@@ -808,12 +831,12 @@ class LeftAndMain extends Controller implements PermissionProvider {
 	/**
 	 * Get a site tree HTML listing which displays the nodes under the given criteria.
 	 *
-	 * @param $className The class of the root object
-	 * @param $rootID The ID of the root object.  If this is null then a complete tree will be
+	 * @param string $className The class of the root object
+	 * @param int $rootID The ID of the root object.  If this is null then a complete tree will be
 	 *  shown
-	 * @param $childrenMethod The method to call to get the children of the tree. For example,
+	 * @param string $childrenMethod The method to call to get the children of the tree. For example,
 	 *  Children, AllChildrenIncludingDeleted, or AllHistoricalChildren
-	 * @return String Nested unordered list with links to each page
+	 * @return string Nested unordered list with links to each page
 	 */
 	public function getSiteTreeFor($className, $rootID = null, $childrenMethod = null, $numChildrenMethod = null,
 			$filterFunction = null, $nodeCountThreshold = 30) {
@@ -914,6 +937,7 @@ class LeftAndMain extends Controller implements PermissionProvider {
 				true,
 				$childrenMethod,
 				$numChildrenMethod,
+				true,
 				$nodeCountThreshold,
 				$nodeCountCallback
 			);
@@ -1010,7 +1034,7 @@ class LeftAndMain extends Controller implements PermissionProvider {
 				'PrevID' => $prev ? $prev->ID : null
 			);
 		}
-		$this->getResponse()->addHeader('Content-Type', 'text/json');
+		$this->getResponse()->addHeader('Content-Type', 'application/json');
 		return Convert::raw2json($data);
 	}
 
@@ -1071,6 +1095,9 @@ class LeftAndMain extends Controller implements PermissionProvider {
 	 * @return SS_HTTPResponse JSON string with a
 	 */
 	public function savetreenode($request) {
+		if (!SecurityToken::inst()->checkRequest($request)) {
+			return $this->httpError(400);
+		}
 		if (!Permission::check('SITETREE_REORGANISE') && !Permission::check('ADMIN')) {
 			$this->getResponse()->setStatusCode(
 				403,
@@ -1298,7 +1325,9 @@ class LeftAndMain extends Controller implements PermissionProvider {
 				// The clientside (mainly LeftAndMain*.js) rely on ajax responses
 				// which can be evaluated as javascript, hence we need
 				// to override any global changes to the validation handler.
-				$form->setValidator($validator);
+				if($validator != NULL){
+					$form->setValidator($validator);
+				}
 			} else {
 				$form->unsetValidator();
 			}
@@ -1409,7 +1438,7 @@ class LeftAndMain extends Controller implements PermissionProvider {
 	 */
 	public function BatchActionsForm() {
 		$actions = $this->batchactions()->batchActionList();
-		$actionsMap = array();
+		$actionsMap = array('-1' => _t('LeftAndMain.DropdownBatchActionsDefault', 'Choose an action...')); // Placeholder action
 		foreach($actions as $action) {
 			$actionsMap[$action->Link] = $action->Title;
 		}
@@ -1425,7 +1454,7 @@ class LeftAndMain extends Controller implements PermissionProvider {
 					$actionsMap
 				)
 					->setAttribute('autocomplete', 'off')
-					->setAttribute('data-placeholder', _t('LeftAndMain.DropdownBatchActionsDefault', 'Actions'))
+					->setAttribute('data-placeholder', _t('LeftAndMain.DropdownBatchActionsDefault', 'Choose an action...'))
 			),
 			new FieldList(
 				// TODO i18n
@@ -1481,6 +1510,9 @@ class LeftAndMain extends Controller implements PermissionProvider {
 	public function currentPageID() {
 		if($this->getRequest()->requestVar('ID') && is_numeric($this->getRequest()->requestVar('ID')))	{
 			return $this->getRequest()->requestVar('ID');
+		} elseif ($this->getRequest()->requestVar('CMSMainCurrentPageID') && is_numeric($this->getRequest()->requestVar('CMSMainCurrentPageID'))) {
+			// see GridFieldDetailForm::ItemEditForm
+			return $this->getRequest()->requestVar('CMSMainCurrentPageID');
 		} elseif (isset($this->urlParams['ID']) && is_numeric($this->urlParams['ID'])) {
 			return $this->urlParams['ID'];
 		} elseif(Session::get($this->sessionNamespace() . ".currentPage")) {
@@ -1499,6 +1531,7 @@ class LeftAndMain extends Controller implements PermissionProvider {
 	 * @param int $id
 	 */
 	public function setCurrentPageID($id) {
+		$id = (int)$id;
 		Session::set($this->sessionNamespace() . ".currentPage", $id);
 	}
 
@@ -1542,72 +1575,13 @@ class LeftAndMain extends Controller implements PermissionProvider {
 	}
 
 	/**
-	 * Return the version number of this application.
-	 * Uses the number in <mymodule>/silverstripe_version
-	 * (automatically replaced by build scripts).
-	 * If silverstripe_version is empty,
-	 * then attempts to get it from composer.lock
+	 * Return the version number of the core packages making up this application,
+	 * using the {@link SilverStripeVersionProvider}.
 	 *
 	 * @return string
 	 */
 	public function CMSVersion() {
-		$versions = array();
-		$modules = array(
-			'silverstripe/framework' => array(
-				'title' => 'Framework',
-				'versionFile' => FRAMEWORK_PATH . '/silverstripe_version',
-			)
-		);
-		if(defined('CMS_PATH')) {
-			$modules['silverstripe/cms'] = array(
-				'title' => 'CMS',
-				'versionFile' => CMS_PATH . '/silverstripe_version',
-			);
-		}
-
-		// Tries to obtain version number from composer.lock if it exists
-		$composerLockPath = BASE_PATH . '/composer.lock';
-		if (file_exists($composerLockPath)) {
-			$cache = SS_Cache::factory('LeftAndMain_CMSVersion');
-			$cacheKey = filemtime($composerLockPath);
-			$versions = $cache->load($cacheKey);
-			if($versions) {
-				$versions = json_decode($versions, true);
-			} else {
-				$versions = array();
-			}
-			if(!$versions && $jsonData = file_get_contents($composerLockPath)) {
-				$lockData = json_decode($jsonData);
-				if($lockData && isset($lockData->packages)) {
-					foreach ($lockData->packages as $package) {
-						if(
-							array_key_exists($package->name, $modules)
-							&& isset($package->version)
-						) {
-							$versions[$package->name] = $package->version;
-						}
-					}
-					$cache->save(json_encode($versions), $cacheKey);
-				}
-			}
-		}
-
-		// Fall back to static version file
-		foreach($modules as $moduleName => $moduleSpec) {
-			if(!isset($versions[$moduleName])) {
-				if($staticVersion = file_get_contents($moduleSpec['versionFile'])) {
-					$versions[$moduleName] = $staticVersion;
-				} else {
-					$versions[$moduleName] = _t('LeftAndMain.VersionUnknown', 'Unknown');
-				}
-			}
-		}
-
-		$out = array();
-		foreach($modules as $moduleName => $moduleSpec) {
-			$out[] = $modules[$moduleName]['title'] . ': ' . $versions[$moduleName];
-		}
-		return implode(', ', $out);
+		return $this->versionProvider->getVersion();
 	}
 
 	/**
@@ -1815,6 +1789,16 @@ class LeftAndMainMarkingFilter {
 	 */
 	protected $params = array();
 
+    /**
+     * @var array
+     */
+	public $ids = array();
+
+    /**
+     * @var array
+     */
+	public $expanded = array();
+
 	/**
 	 * @param array $params Request params (unsanitized)
 	 */
@@ -1912,7 +1896,7 @@ class LeftAndMain_TreeNode extends ViewableData {
 	/**
 	 * Object represented by this node
 	 *
-	 * @var Object
+	 * @var SS_Object
 	 */
 	protected $obj;
 
@@ -1945,7 +1929,7 @@ class LeftAndMain_TreeNode extends ViewableData {
 	protected $filter;
 
 	/**
-	 * @param Object $obj
+	 * @param SS_Object $obj
 	 * @param string $link
 	 * @param bool $isCurrent
 	 * @param string $numChildrenMethod
@@ -1968,16 +1952,21 @@ class LeftAndMain_TreeNode extends ViewableData {
 	 *
 	 * @todo Remove hardcoded assumptions around returning an <li>, by implementing recursive tree node rendering
 	 *
-	 * @return String
+	 * @return string
 	 */
 	public function forTemplate() {
 		$obj = $this->obj;
-		return "<li id=\"record-$obj->ID\" data-id=\"$obj->ID\" data-pagetype=\"$obj->ClassName\" class=\""
-			. $this->getClasses() . "\">" . "<ins class=\"jstree-icon\">&nbsp;</ins>"
-			. "<a href=\"" . $this->getLink() . "\" title=\"("
-			. trim(_t('LeftAndMain.PAGETYPE','Page type'), " :") // account for inconsistencies in translations
-			. ": " . $obj->i18n_singular_name() . ") $obj->Title\" ><ins class=\"jstree-icon\">&nbsp;</ins><span class=\"text\">" . ($obj->TreeTitle)
-			. "</span></a>";
+
+		return (string)SSViewer::execute_template('LeftAndMain_TreeNode', $obj, array(
+			'Classes' => $this->getClasses(),
+			'Link' => $this->getLink(),
+			'Title' => sprintf(
+				'(%s: %s) %s',
+				trim(_t('LeftAndMain.PAGETYPE','Page type'), " :"),
+				$obj->i18n_singular_name(),
+				$obj->Title
+			),
+		));
 	}
 
 	/**
@@ -2008,7 +1997,7 @@ class LeftAndMain_TreeNode extends ViewableData {
 			}
 			$classes .= ' ' . $filterClasses;
 		}
-		return $classes;
+		return $classes ?: '';
 	}
 
 	public function getObj() {

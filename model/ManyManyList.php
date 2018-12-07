@@ -47,7 +47,7 @@ class ManyManyList extends RelationList {
 	 * @param string $joinTable The name of the table whose entries define the content of this many_many relation.
 	 * @param string $localKey The key in the join table that maps to the dataClass' PK.
 	 * @param string $foreignKey The key in the join table that maps to joined class' PK.
-	 * @param string $extraFields A map of field => fieldtype of extra fields on the join table.
+	 * @param array $extraFields A map of field => fieldtype of extra fields on the join table.
 	 *
 	 * @example new ManyManyList('Group','Group_Members', 'GroupID', 'MemberID');
 	 */
@@ -86,7 +86,7 @@ class ManyManyList extends RelationList {
 		$finalized = array();
 
 		foreach($this->extraFields as $field => $spec) {
-			$obj = Object::create_from_string($spec);
+			$obj = SS_Object::create_from_string($spec);
 
 			if($obj instanceof CompositeDBField) {
 				$this->_compositeExtraFields[$field] = array();
@@ -104,7 +104,7 @@ class ManyManyList extends RelationList {
 			}
 		}
 
-		$this->dataQuery->selectFromTable($this->joinTable, $finalized);
+		$this->dataQuery->addSelectFromTable($this->joinTable, $finalized);
 	}
 
 	/**
@@ -131,7 +131,7 @@ class ManyManyList extends RelationList {
 					}
 				}
 
-				$obj = Object::create_from_string($this->extraFields[$fieldName], $fieldName);
+				$obj = SS_Object::create_from_string($this->extraFields[$fieldName], $fieldName);
 				$obj->setValue($value, null, false);
 
 				$add[$fieldName] = $obj;
@@ -151,9 +151,9 @@ class ManyManyList extends RelationList {
 	 * Return a filter expression for when getting the contents of the
 	 * relationship for some foreign ID
 	 *
-	 * @param int $id
+	 * @param int|null $id
 	 *
-	 * @return string
+	 * @return array
 	 */
 	protected function foreignIDFilter($id = null) {
 		if ($id === null) {
@@ -176,7 +176,7 @@ class ManyManyList extends RelationList {
 	 * entries. However some subclasses of ManyManyList (Member_GroupSet) modify foreignIDFilter to
 	 * include additional calculated entries, so we need different filters when reading and when writing
 	 *
-	 * @param array|integer $id (optional) An ID or an array of IDs - if not provided, will use the current ids
+	 * @param array|int|null $id (optional) An ID or an array of IDs - if not provided, will use the current ids
 	 * as per getForeignID
 	 * @return array Condition In array(SQL => parameters format)
 	 */
@@ -188,7 +188,17 @@ class ManyManyList extends RelationList {
 	 * Add an item to this many_many relationship
 	 * Does so by adding an entry to the joinTable.
 	 *
-	 * @param mixed $item
+	 * Can also be used to update an already existing joinTable entry
+	 *
+	 * Example:
+	 *
+	 *     $manyManyList->add($recordID, array("ExtraField"=>"value"));
+	 *
+	 *
+	 * @throws InvalidArgumentException
+	 * @throws Exception
+	 *
+	 * @param DataObject|int $item
 	 * @param array $extraFields A map of additional columns to insert into the joinTable.
 	 * Column names should be ANSI quoted.
 	 */
@@ -250,7 +260,7 @@ class ManyManyList extends RelationList {
 				foreach($this->extraFields as $fieldName => $fieldSpec) {
 					// Skip fields without an assignment
 					if(array_key_exists($fieldName, $extraFields)) {
-						$fieldObject = Object::create_from_string($fieldSpec, $fieldName);
+						$fieldObject = SS_Object::create_from_string($fieldSpec, $fieldName);
 						$fieldObject->setValue($extraFields[$fieldName]);
 						$fieldObject->writeToManipulation($manipulation[$this->joinTable]);
 					}
@@ -349,7 +359,7 @@ class ManyManyList extends RelationList {
 	 */
 	public function getExtraData($componentName, $itemID) {
 		$result = array();
-		
+
 		// Skip if no extrafields or unsaved record
 		if(empty($this->extraFields) || empty($itemID)) {
 			return $result;

@@ -51,6 +51,13 @@ class TreeDropdownField extends FormField {
 	);
 
 	/**
+	 * @config
+	 * @var int
+	 * @see {@link Hierarchy::$node_threshold_total}.
+	 */
+	private static $node_threshold_total = 30;
+
+	/**
 	 * @ignore
 	 */
 	protected $sourceObject, $keyField, $labelField, $filterCallback,
@@ -64,7 +71,7 @@ class TreeDropdownField extends FormField {
 	 * @var string default child counting method in Hierarchy->getChildrenAsUL
 	 */
 	protected $numChildrenMethod = 'numChildren';
-	
+
 	/**
 	 * Used by field search to leave only the relevant entries
 	 */
@@ -101,7 +108,7 @@ class TreeDropdownField extends FormField {
 		$this->keyField     = $keyField;
 		$this->labelField   = $labelField;
 		$this->showSearch	= $showSearch;
-		
+
 		//Extra settings for Folders
 		if ($sourceObject == 'Folder') {
 			$this->childrenMethod = 'ChildFolders';
@@ -192,11 +199,11 @@ class TreeDropdownField extends FormField {
 		$this->childrenMethod = $method;
 		return $this;
 	}
-	
+
 	/**
 	 * @param $method The parameter to numChildrenMethod to use when calling Hierarchy->getChildrenAsUL in
 	 * {@link Hierarchy}. Should be used in conjunction with setChildrenMethod().
-	 * 
+	 *
 	 */
 	public function setNumChildrenMethod($method) {
 		$this->numChildrenMethod = $method;
@@ -248,7 +255,7 @@ class TreeDropdownField extends FormField {
 			)
 		);
 
-		return $this->customise($properties)->renderWith('TreeDropdownField');
+		return parent::Field($properties);
 	}
 
 	public function extraClass() {
@@ -313,7 +320,7 @@ class TreeDropdownField extends FormField {
 				if(!$value || $value == 'unchanged') continue;
 
 				$obj->markToExpose($this->objectForKey($value));
-			}
+					}
 		}
 
 		$self = $this;
@@ -384,8 +391,8 @@ class TreeDropdownField extends FormField {
 	 * Marking public function for the tree, which combines different filters sensibly.
 	 * If a filter function has been set, that will be called. And if search text is set,
 	 * filter on that too. Return true if all applicable conditions are true, false otherwise.
-	 * @param $node
-	 * @return unknown_type
+	 * @param DataObject $node
+	 * @return boolean
 	 */
 	public function filterMarking($node) {
 		if ($this->filterCallback && !call_user_func($this->filterCallback, $node)) return false;
@@ -406,7 +413,8 @@ class TreeDropdownField extends FormField {
 	}
 
 	/**
-	 * @param String $field
+	 * @param string $field
+	 * @return $this
 	 */
 	public function setLabelField($field) {
 		$this->labelField = $field;
@@ -414,14 +422,15 @@ class TreeDropdownField extends FormField {
 	}
 
 	/**
-	 * @return String
+	 * @return string
 	 */
 	public function getLabelField() {
 		return $this->labelField;
 	}
 
 	/**
-	 * @param String $field
+	 * @param string $field
+	 * @return $this
 	 */
 	public function setKeyField($field) {
 		$this->keyField = $field;
@@ -429,14 +438,15 @@ class TreeDropdownField extends FormField {
 	}
 
 	/**
-	 * @return String
+	 * @return string
 	 */
 	public function getKeyField() {
 		return $this->keyField;
 	}
 
 	/**
-	 * @param String $field
+	 * @param string $field
+	 * @return $this
 	 */
 	public function setSourceObject($class) {
 		$this->sourceObject = $class;
@@ -444,7 +454,7 @@ class TreeDropdownField extends FormField {
 	}
 
 	/**
-	 * @return String
+	 * @return string
 	 */
 	public function getSourceObject() {
 		return $this->sourceObject;
@@ -489,9 +499,9 @@ class TreeDropdownField extends FormField {
 				if ($row->ParentID) $parents[$row->ParentID] = true;
 				$this->searchIds[$row->ID] = true;
 			}
-			
+
 			$sourceObject = $this->sourceObject;
-			
+
 			while (!empty($parents)) {
 				$items = $sourceObject::get()
 					->filter("ID",array_keys($parents));

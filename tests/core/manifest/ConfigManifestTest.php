@@ -30,13 +30,10 @@ class ConfigManifestTest extends SapphireTest {
 	 * @return Zend_Cache_Core
 	 */
 	protected function getCacheMock() {
-		return $this->getMock(
-			'Zend_Cache_Core',
-			array('load', 'save'),
-			array(),
-			'',
-			false
-		);
+		return $this->getMockBuilder('Zend_Cache_Core')
+			->setMethods(array('load', 'save'))
+			->disableOriginalConstructor()
+			->getMock();
 	}
 
 	/**
@@ -45,13 +42,10 @@ class ConfigManifestTest extends SapphireTest {
 	 * @return SS_ConfigManifest
 	 */
 	protected function getManifestMock($methods) {
-		return $this->getMock(
-			'SS_ConfigManifest',
-			$methods,
-			array(), // no constructor arguments
-			'', // default
-			false // don't call the constructor
-		);
+		return $this->getMockBuilder('SS_ConfigManifest')
+			->setMethods($methods)
+			->disableOriginalConstructor()
+			->getMock();
 	}
 
 	/**
@@ -150,6 +144,83 @@ class ConfigManifestTest extends SapphireTest {
 			->method('regenerate');
 
 		$manifest->__construct(dirname(__FILE__).'/fixtures/configmanifest', false, false);
+	}
+
+	/**
+	 * Test cache regeneration if all or some of the cache files are missing
+	 *
+	 * 1. Test regeneration if all cache files are missing
+	 * 2. Test regeneration if 'variant_key_spec' cache file is missing
+	 * 3. Test regeneration if 'php_config_sources' cache file is missing
+	 */
+	public function testAutomaticCacheRegeneration(){
+		$base = dirname(__FILE__) . '/fixtures/configmanifest';
+
+		// Test regeneration if all cache files are missing
+		$manifest = $this->getManifestMock(array('getCache', 'regenerate', 'buildYamlConfigVariant'));
+
+		$manifest->expects($this->once())// regenerate should be called once
+			->method('regenerate')
+			->with($this->equalTo(false)); // includeTests = false
+
+		// Set up a cache where we expect load to never be called
+		$cache = $this->getCacheMock();
+		$cache->expects($this->exactly(2))
+			->will($this->returnValue(false))
+			->method('load');
+
+		$manifest->expects($this->any())
+			->method('getCache')
+			->will($this->returnValue($cache));
+
+		$manifest->__construct($base);
+
+		// Test regeneration if 'variant_key_spec' cache file is missing
+		$manifest = $this->getManifestMock(array('getCache', 'regenerate', 'buildYamlConfigVariant'));
+
+		$manifest->expects($this->once())// regenerate should be called once
+			->method('regenerate')
+			->with($this->equalTo(false)); // includeTests = false
+
+
+		$cache = $this->getCacheMock();
+		$cache->expects($this->exactly(2))
+			->method('load')
+			->will($this->returnCallback(function ($parameter) {
+				if (strpos($parameter, 'variant_key_spec') !== false) {
+					return false;
+				}
+				return array();
+			}));
+
+		$manifest->expects($this->any())
+			->method('getCache')
+			->will($this->returnValue($cache));
+
+		$manifest->__construct($base);
+
+		// Test regeneration if 'php_config_sources' cache file is missing
+		$manifest = $this->getManifestMock(array('getCache', 'regenerate', 'buildYamlConfigVariant'));
+
+		$manifest->expects($this->once())// regenerate should be called once
+			->method('regenerate')
+			->with($this->equalTo(false)); // includeTests = false
+
+		$cache = $this->getCacheMock();
+		$cache->expects($this->exactly(2))
+			->method('load')
+			->will($this->returnCallback(function ($parameter) {
+				if (strpos($parameter, 'php_config_sources') !== false) {
+					return false;
+				}
+				return array();
+			}));
+
+		$manifest->expects($this->any())
+			->method('getCache')
+			->will($this->returnValue($cache));
+
+		$manifest->__construct($base);
 	}
 
 	/**

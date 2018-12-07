@@ -80,6 +80,7 @@ class SS_ConfigManifest {
 	 * from the cache or re-scanning for classes.
 	 *
 	 * @param string $base The project base path.
+	 * @param bool   $includeTests
 	 * @param bool   $forceRegen Force the manifest to be regenerated.
 	 */
 	public function __construct($base, $includeTests = false, $forceRegen = false ) {
@@ -99,7 +100,7 @@ class SS_ConfigManifest {
 		}
 
 		// If we don't have a variantKeySpec (because we're forcing regen, or it just wasn't in the cache), generate it
-		if (false === $this->variantKeySpec) {
+		if (false === $this->phpConfigSources || false === $this->variantKeySpec) {
 			$this->regenerate($includeTests);
 		}
 
@@ -109,13 +110,15 @@ class SS_ConfigManifest {
 
 	/**
 	 * Provides a hook for mock unit tests despite no DI
-	 * @return Zend_Cache_Frontend
+	 * @return Zend_Cache_Core
 	 */
 	protected function getCache()
 	{
 		return SS_Cache::factory('SS_Configuration', 'Core', array(
 			'automatic_serialization' => true,
-			'lifetime' => null
+			'lifetime' => null,
+			'cache_id_prefix' => 'SS_Configuration_',
+            'disable-segmentation' => true,
 		));
 	}
 
@@ -191,6 +194,7 @@ class SS_ConfigManifest {
 	 *
 	 * Does _not_ build the actual variant
 	 *
+	 * @param bool $includeTests
 	 * @param bool $cache Cache the result.
 	 */
 	public function regenerate($includeTests = false, $cache = true) {
@@ -652,8 +656,10 @@ class SS_ConfigManifest {
 	 * @return void
 	 */
 	public function mergeInYamlFragment(&$into, $fragment) {
-		foreach ($fragment as $k => $v) {
-			Config::merge_high_into_low($into[$k], $v);
+		if (is_array($fragment) || ($fragment instanceof  Traversable)) {
+			foreach ($fragment as $k => $v) {
+				Config::merge_high_into_low($into[$k], $v);
+			}
 		}
 	}
 

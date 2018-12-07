@@ -11,15 +11,7 @@ We also have separate instructions for [installing modules with Composer](/devel
 
 Before installing Composer you should ensure your system has the version control system, [Git installed](http://git-scm.com/book/en/v2/Getting-Started-Installing-Git). Composer uses Git to check out the code dependancies you need to run your SilverStripe CMS website from the code repositories maintained on GitHub.
 
-Next, to install Composer, run the following commands from your command-line.
-
-	# Download composer.phar
-	curl -s https://getcomposer.org/installer | php
-
-	# Move to your path
-	sudo mv composer.phar /usr/local/bin/composer
-
-Or [download composer.phar](http://getcomposer.org/composer.phar) manually, and rename `composer.phar` as `composer`, and put it in your path.  On Windows, you should call the file `composer.bat`.
+Next, [install composer](https://getcomposer.org/download/). For our documentation we assume composer is installed globally.
 
 You can then run Composer commands by calling `composer`.  For example:
 
@@ -140,7 +132,7 @@ This package will maintain your [.gitignore](http://git-scm.com/docs/gitignore) 
 
 Include the package in your project by running this command
 
-    composer require gdmedia/ss-auto-git-ignore
+    composer require gdmedia/ss-auto-git-ignore --dev
 
 Edit your composer.json and insert 
 
@@ -161,12 +153,12 @@ Full example of composer.json with the SSAutoGitIgnore installed and enabled
 			"php": ">=5.3.2",
 			"silverstripe/cms": "3.0.*",
 			"silverstripe/framework": "3.0.*",
-			"silverstripe-themes/simple": "*",
-			"gdmedia/ss-auto-git-ignore": "*"
+			"silverstripe-themes/simple": "*"
 		},
 		"require-dev": {
 			"silverstripe/compass": "*",
-			"silverstripe/docsviewer": "*"
+			"silverstripe/docsviewer": "*",
+			"gdmedia/ss-auto-git-ignore": "*"
 		},
 		"scripts": {
 			"post-update-cmd": "GDM\\SSAutoGitIgnore\\UpdateScript::Go"

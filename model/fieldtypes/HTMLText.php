@@ -34,6 +34,26 @@ class HTMLText extends Text {
 
 	protected $processShortcodes = true;
 
+	/**
+	 * Check if shortcodes are enabled
+	 *
+	 * @return bool
+	 */
+	public function getProcessShortcodes() {
+		return $this->processShortcodes;
+	}
+
+	/**
+	 * Set shortcodes on or off by default
+	 *
+	 * @param bool $process
+	 * @return $this
+	 */
+	public function setProcessShortcodes($process) {
+		$this->processShortcodes = (bool)$process;
+		return $this;
+	}
+
 	protected $whitelist = false;
 
 	public function __construct($name = null, $options = array()) {
@@ -98,9 +118,11 @@ class HTMLText extends Text {
 			$doc = new DOMDocument();
 
 			// Catch warnings thrown by loadHTML and turn them into a failure boolean rather than a SilverStripe error
-			set_error_handler(create_function('$no, $str', 'throw new Exception("HTML Parse Error: ".$str);'), E_ALL);
+			set_error_handler(function($no, $str) {
+                throw new Exception("HTML Parse Error: " . $str);
+            }, E_ALL);
 			//  Nonbreaking spaces get converted into weird characters, so strip them
-			$value = str_replace('&nbsp;', ' ', $this->value);
+			$value = str_replace('&nbsp;', ' ', $this->RAW());
 			try {
 				$res = $doc->loadHTML('<meta content="text/html; charset=utf-8" http-equiv="Content-type"/>' . $value);
 			}
@@ -120,8 +142,8 @@ class HTMLText extends Text {
 			/* See if we can pull a paragraph out*/
 
 			// Strip out any images in case there's one at the beginning. Not doing this will return a blank paragraph
-			$str = preg_replace('{^\s*(<.+?>)*<img[^>]*>}', '', $this->value);
-			if (preg_match('{<p(\s[^<>]*)?>(.*[A-Za-z]+.*)</p>}', $str, $matches)) $str = $matches[2];
+			$str = preg_replace('{^\s*(<.+?>)*<img[^>]*>}u', '', $this->value);
+			if (preg_match('{<p(\s[^<>]*)?>(.*[A-Za-z]+.*)</p>}u', $str, $matches)) $str = $matches[2];
 
 			/* If _that_ failed, just use the whole text */
 			if (!$str) $str = $this->value;
@@ -135,7 +157,7 @@ class HTMLText extends Text {
 
 		/* Now split into words. If we are under the maxWords limit, just return the whole string (re-implode for
 		 * whitespace normalization) */
-		$words = preg_split('/\s+/', $str);
+		$words = preg_split('/\s+/u', $str);
 		if ($maxWords == -1 || count($words) <= $maxWords) return implode(' ', $words);
 
 		/* Otherwise work backwards for a looking for a sentence ending (we try to avoid abbreviations, but aren't
@@ -163,7 +185,7 @@ class HTMLText extends Text {
 		$paragraph = $this->Summary(-1);
 
 		/* Then look for the first sentence ending. We could probably use a nice regex, but for now this will do */
-		$words = preg_split('/\s+/', $paragraph);
+		$words = preg_split('/\s+/u', $paragraph);
 		foreach ($words as $i => $word) {
 			if (preg_match('/(!|\?|\.)$/', $word) && !preg_match('/(Dr|Mr|Mrs|Ms|Miss|Sr|Jr|No)\.$/i', $word)) {
 				return implode(' ', array_slice($words, 0, $i+1));
@@ -175,6 +197,15 @@ class HTMLText extends Text {
 		return $this->Summary();
 	}
 
+	public function RAW() {
+		if ($this->processShortcodes) {
+			return ShortcodeParser::get_active()->parse($this->value);
+		}
+		else {
+			return $this->value;
+		}
+	}
+
 	/**
 	 * Return the value of the field with relative links converted to absolute urls (with placeholders parsed).
 	 * @return string
@@ -184,12 +215,7 @@ class HTMLText extends Text {
 	}
 
 	public function forTemplate() {
-		if ($this->processShortcodes) {
-			return ShortcodeParser::get_active()->parse($this->value);
-		}
-		else {
-			return $this->value;
-		}
+		return $this->RAW();
 	}
 
 	public function prepValueForDB($value) {
@@ -232,19 +258,20 @@ class HTMLText extends Text {
 	 * @return boolean
 	 */
 	public function exists() {
-		// If it's blank, it's blank
-		if(!parent::exists()) {
-			return false;
-		}
+		$value = $this->value;
+
+		if (!$this->isPopulated($value)) {
+		    return false;
+        }
 
 		// If it's got a content tag
-		if(preg_match('/<(img|embed|object|iframe|meta|source|link)[^>]*>/i', $this->value)) {
+		if(preg_match('/<(img|embed|object|iframe|meta|source|link)[^>]*>/i', $value)) {
 			return true;
 		}
 
 		// If it's just one or two tags on its own (and not the above) it's empty.
 		// This might be <p></p> or <h1></h1> or whatever.
-		if(preg_match('/^[\\s]*(<[^>]+>[\\s]*){1,2}$/', $this->value)) {
+		if(preg_match('/^[\\s]*(<[^>]+>[\\s]*){1,2}$/u', $value)) {
 			return false;
 		}
 

@@ -16,4 +16,30 @@ class EnumFieldTest extends SapphireTest {
 		$this->assertEquals(true, $searchField->getHasEmptyDefault());
 		$this->assertEquals($anyText, $searchField->getEmptyString());
 	}
+
+	public function testEnumParsing() {
+		$enum = new Enum('testField', "
+			,
+			0,
+			Item1,
+			Item2,
+			Item 3,
+			Item-4,
+			item 5
+			still 5,
+			trailing comma,
+		");
+
+		$this->assertEquals(ArrayLib::valuekey(array(
+			'',
+			'0',
+			'Item1',
+			'Item2',
+			'Item 3',
+		    'Item-4',
+			'item 5
+			still 5',
+			'trailing comma'
+		)), $enum->enumValues());
+	}
 }

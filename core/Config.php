@@ -77,7 +77,7 @@ class Config {
 	 * A marker instance for the "anything" singleton value. Don't access
 	 * directly, even in-class, always use self::anything()
 	 *
-	 * @var Object
+	 * @var SS_Object
 	 */
 	private static $_anything = null;
 
@@ -85,7 +85,7 @@ class Config {
 	 * Get a marker class instance that is used to do a "remove anything with
 	 * this key" by adding $key => Config::anything() to the suppress array
 	 *
-	 * @return Object
+	 * @return SS_Object
 	 */
 	public static function anything() {
 		if (self::$_anything === null) {
@@ -223,7 +223,7 @@ class Config {
 	 * @return Config Reference to new active Config instance
 	 */
 	public static function nest() {
-		$current = self::$instance;
+		$current = self::inst();
 
 		$new = clone $current;
 		$new->nestedFrom = $current;
@@ -515,7 +515,7 @@ class Config {
 		if (($sourceOptions & self::EXCLUDE_EXTRA_SOURCES) != self::EXCLUDE_EXTRA_SOURCES) {
 			// If we don't have a fresh list of extra sources, get it from the class itself
 			if (!array_key_exists($class, $this->extraConfigSources)) {
-				$this->extraConfigSources[$class] = Object::get_extra_config_sources($class);
+				$this->extraConfigSources[$class] = SS_Object::get_extra_config_sources($class);
 			}
 
 			// Update $sources with any extra sources
@@ -585,7 +585,8 @@ class Config {
 		// Have we got a cached value? Use it if so
 		$key = $class.$name.$sourceOptions;
 
-		if (($result = $this->cache->get($key)) === false) {
+		list($cacheHit, $result) = $this->cache->checkAndGet($key);
+		if (!$cacheHit) {
 			$tags = array();
 			$result = null;
 			$this->getUncached($class, $name, $sourceOptions, $result, $suppress, $tags);
@@ -601,9 +602,9 @@ class Config {
 	 * Configuration is modify only. The value passed is merged into the existing configuration. If you want to
 	 * replace the current array value, you'll need to call remove first.
 	 *
-	 * @param $class string - The class to update a configuration value for
-	 * @param $name string - The configuration property name to update
-	 * @param $value any - The value to update with
+	 * @param string $class The class to update a configuration value for
+	 * @param string $name  The configuration property name to update
+	 * @param mixed $value The value to update with
 	 *
 	 * Arrays are recursively merged into current configuration as "latest" - for associative arrays the passed value
 	 * replaces any item with the same key, for sequential arrays the items are placed at the end of the array, for
@@ -647,13 +648,6 @@ class Config {
 	 *
 	 * @param string $class The class to remove a configuration value from
 	 * @param string $name The configuration name
-	 * @param mixed $key An optional key to filter against.
-	 *   If referenced config value is an array, only members of that array that match this key will be removed
-	 *   Must also match value if provided to be removed
-	 * @param mixed $value And optional value to filter against.
-	 *   If referenced config value is an array, only members of that array that match this value will be removed
-	 *   If referenced config value is not an array, value will be removed only if it matches this argument
-	 *   Must also match key if provided and referenced config value is an array to be removed
 	 *
 	 * Matching is always by "==", not by "==="
 	 */
@@ -703,8 +697,8 @@ class Config_LRU {
 
 	public function __construct() {
 		Deprecation::notice('4.0', 'Please use Config_MemCache instead', Deprecation::SCOPE_CLASS);
-		if (version_compare(PHP_VERSION, '5.3.7', '<')) {
-			// SplFixedArray causes seg faults before PHP 5.3.7
+		if (version_compare(PHP_VERSION, '5.3.7', '<') || version_compare(PHP_VERSION, '6.99.99', '>')) {
+			// SplFixedArray causes seg faults before PHP 5.3.7, and also in 7.0.0-RC1
 			$this->cache = array();
 		}
 		else {
@@ -769,17 +763,37 @@ class Config_LRU {
 		return $this->miss ? ($this->hit / $this->miss) : 0;
 	}
 
+	/**
+	 * Return a cached value in the case of a hit, false otherwise.
+	 * For a more robust cache checking, use {@link checkAndGet()}
+	 *
+	 * @param  string $key The cache key
+	 * @return variant     Cached value, if hit. False otherwise
+	 */
 	public function get($key) {
-		if (isset($this->indexing[$key])) {
+		list($hit, $result) = $this->checkAndGet($key);
+		return $hit ? $result : false;
+	}
+
+	/**
+	 * Checks for a cache hit and looks up the value by returning multiple values.
+	 * Distinguishes a cached 'false' value from a cache miss.
+	 *
+	 * @param  string $key The cache key
+	 * @return array  First element boolean, isHit. Second element the actual result.
+	 */
+	public function checkAndGet($key) {
+		if (array_key_exists($key, $this->indexing)) {
 			$this->hit++;
 
 			$res = $this->cache[$this->indexing[$key]];
 			$res->c = ++$this->c;
-			return $res->value;
-		}
+			return array(true, $res->value);
 
-		$this->miss++;
-		return false;
+		} else {
+			$this->miss++;
+			return array(false, null);
+		}
 	}
 
 	public function clean($tag = null) {
@@ -832,13 +846,22 @@ class Config_MemCache {
 	}
 
 	public function get($key) {
-		if(isset($this->cache[$key])) {
-			++$this->hit;
-			return $this->cache[$key][0];
-		}
+		list($hit, $result) = $this->checkAndGet($key);
+		return $hit ? $result : false;
+	}
 
-		++$this->miss;
-		return false;
+	/**
+	 * Checks for a cache hit and returns the value as a multi-value return
+	 * @return array First element boolean, isHit. Second element the actual result.
+	 */
+	public function checkAndGet($key) {
+		if(array_key_exists($key, $this->cache)) {
+			++$this->hit;
+			return array(true, $this->cache[$key][0]);
+		} else {
+			++$this->miss;
+			return array(false, null);
+		}
 	}
 
 	public function clean($tag = null) {
@@ -881,6 +904,7 @@ class Config_ForClass {
 
 	/**
 	 * @param string $name
+	 * @return mixed
 	 */
 	public function __get($name) {
 		return Config::inst()->get($this->class, $name);
@@ -892,6 +916,16 @@ class Config_ForClass {
 	 */
 	public function __set($name, $val) {
 		return Config::inst()->update($this->class, $name, $val);
+	}
+
+	/**
+	 * @param string $name
+	 * @return bool
+	 */
+	public function __isset($name)
+	{
+		$val = $this->__get($name);
+		return isset($val);
 	}
 
 	/**

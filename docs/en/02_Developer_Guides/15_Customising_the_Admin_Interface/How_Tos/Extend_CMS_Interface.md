@@ -1,6 +1,6 @@
-# How to extend the CMS interface #
+# How to extend the CMS interface
 
-## Introduction ##
+## Introduction
 
 The CMS interface works just like any other part of your website: It consists of
 PHP controllers, templates, CSS stylesheets and JavaScript. Because it uses the
@@ -11,9 +11,9 @@ into the main CMS menu. A page can be bookmarked by a CMS author through a
 simple checkbox.
 
 For a deeper introduction to the inner workings of the CMS, please refer to our
-guide on [CMS Architecture](../reference/cms-architecture).
+guide on [CMS Architecture](/developer_guides/customising_the_admin_interface/cms_architecture).
 
-## Overload a CMS template ##
+## Overload a CMS template
 
 If you place a template with an identical name into your application template
 directory (usually `mysite/templates/`), it'll take priority over the built-in
@@ -62,7 +62,7 @@ Load the new CSS file into the CMS, by setting the `LeftAndMain.extra_requiremen
 	  extra_requirements_css:
 	    - mysite/css/BookmarkedPages.css
 
-## Create a "bookmark" flag on pages ##
+## Create a "bookmark" flag on pages
 
 Now we'll define which pages are actually bookmarked, a flag that is stored in
 the database. For this we need to decorate the page record with a
@@ -190,17 +190,45 @@ We can also easily create new drop-up menus by defining new tabs within the
 Empty tabs will be automatically removed from the `FieldList` to prevent clutter.
 </div>
 
-New actions will need associated controller handlers to work. You can use a
-`LeftAndMainExtension` to provide one. Refer to [Controller documentation](../../controllers)
-for instructions on setting up handlers.
-
 To make the actions more user-friendly you can also use alternating buttons as
 detailed in the [CMS Alternating Button](cms_alternating_button)
 how-to.
 
+### Implementing handlers
+
+Your newly created buttons need handlers to bind to before they will do anything.
+To implement these handlers, you will need to create a `LeftAndMainExtension` and add
+applicable controller actions to it:
+
+	:::php
+	class CustomActionsExtension extends LeftAndMainExtension {
+		
+		private static $allowed_actions = array(
+        	'sampleAction'
+    	);
+    	
+    	public function sampleAction()
+    	{
+    		// Create the web
+    	}
+    	
+    }
+    
+The extension then needs to be registered:
+
+	:::yaml
+	LeftAndMain:
+		extensions:
+			- CustomActionsExtension
+			
+You can now use these handlers with your buttons:
+
+	:::php
+	$fields->push(FormAction::create('sampleAction', 'Perform Sample Action'));
+
 ## Summary
 
-In a few lines of code, we've customized the look and feel of the CMS.
+In a few lines of code, we've customised the look and feel of the CMS.
 
 While this example is only scratching the surface, it includes most building
 blocks and concepts for more complex extensions as well.

@@ -172,12 +172,67 @@ class DataObjectSchemaGenerationTest extends SapphireTest {
 		$item1->delete();
 		$item2->delete();
 	}
+
+    public function testSortFieldBecomeIndexes()
+    {
+        $object = new DataObjectSchemaGenerationTest_Sorted();
+        $indexes = $object->databaseIndexes();
+        $this->assertArrayHasKey('Sort', $indexes);
+        $this->assertTrue($indexes['Sort']);
+
+        Config::inst()->update('DataObjectSchemaGenerationTest_Sorted', 'default_sort', 'Sort ASC');
+        $indexes = $object->databaseIndexes();
+        $this->assertArrayHasKey('Sort', $indexes);
+        $this->assertTrue($indexes['Sort']);
+
+        Config::inst()->update('DataObjectSchemaGenerationTest_Sorted', 'default_sort', 'Sort DESC');
+        $indexes = $object->databaseIndexes();
+        $this->assertArrayHasKey('Sort', $indexes);
+        $this->assertTrue($indexes['Sort']);
+
+        Config::inst()->update('DataObjectSchemaGenerationTest_Sorted', 'default_sort', '"Sort" DESC');
+        $indexes = $object->databaseIndexes();
+        $this->assertArrayHasKey('Sort', $indexes);
+        $this->assertTrue($indexes['Sort']);
+
+
+        Config::inst()->update('DataObjectSchemaGenerationTest_Sorted', 'default_sort', '"DataObjectSchemaGenerationTest_Sorted"."Sort" ASC');
+        $indexes = $object->databaseIndexes();
+        $this->assertArrayHasKey('Sort', $indexes);
+        $this->assertTrue($indexes['Sort']);
+
+        Config::inst()->update('DataObjectSchemaGenerationTest_Sorted', 'default_sort', '"Sort" DESC, "Title" ASC');
+        $indexes = $object->databaseIndexes();
+        $this->assertArrayHasKey('Sort', $indexes);
+        $this->assertTrue($indexes['Sort']);
+        $this->assertArrayHasKey('Title', $indexes);
+        $this->assertTrue($indexes['Title']);
+
+        // make sure that specific indexes aren't overwritten
+        Config::inst()->update('DataObjectSchemaGenerationTest_Sorted', 'indexes', array(
+            'Sort' => 'unique',
+        ));
+
+        $indexes = $object->databaseIndexes();
+        $this->assertArrayHasKey('Sort', $indexes);
+        $this->assertEquals('unique', $indexes['Sort']);
+
+        // make sure Text fields don't get indexes automatically - these can be db-driver dependent
+		$object = new DataObjectSchemaGenerationTest_SortedByText();
+		$indexes = $object->databaseIndexes();
+		$this->assertArrayNotHasKey('Description', $indexes);
+	}
 }
 
 class DataObjectSchemaGenerationTest_DO extends DataObject implements TestOnly {
 	private static $db = array(
 		'Enum1' => 'Enum("A, B, C, D","")',
 		'Enum2' => 'Enum("A, B, C, D","A")',
+		'NumberField' => 'Decimal',
+		'FloatingField' => 'Decimal(10,3,1.1)',
+		'TextValue' => 'Varchar',
+		'Date' => 'SS_Datetime',
+		'MyNumber' => 'Int'
 	);
 }
 
@@ -206,4 +261,23 @@ class DataObjectSchemaGenerationTest_IndexDO extends DataObjectSchemaGenerationT
 		),
 		'SearchFields' => 'fulltext ("Title","Content")'
 	);
+}
+
+class DataObjectSchemaGenerationTest_Sorted extends DataObject implements TestOnly {
+    private static $db = array(
+        'Title' => 'Varchar',
+        'Sort' => 'Int',
+    );
+
+    private static $default_sort = "Sort";
+}
+
+class DataObjectSchemaGenerationTest_SortedByText extends DataObject implements TestOnly {
+	private static $db = array(
+		'Title' => 'Varchar',
+		'Description' => 'Text',
+		'Sort' => 'Int',
+	);
+
+	private static $default_sort = "Description";
 }

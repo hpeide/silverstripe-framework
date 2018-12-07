@@ -270,7 +270,7 @@ class PaginatedList extends SS_ListDecorator {
 	 * </code>
 	 *
 	 * @param  int $context The number of pages to display around the current
-	 *         page. The number should be event, as half the number of each pages
+	 *         page. The number should be even, as half the number of each pages
 	 *         are displayed on either side of the current one.
 	 * @return SS_List
 	 */
@@ -293,6 +293,7 @@ class PaginatedList extends SS_ListDecorator {
 		}
 
 		$left  = max($current - $offset, 1);
+		$right = min($current + $offset, $total);
 		$range = range($current - $offset, $current + $offset);
 
 		if ($left + $context > $total) {
@@ -304,7 +305,7 @@ class PaginatedList extends SS_ListDecorator {
 			$num     = $i + 1;
 
 			$emptyRange = $num != 1 && $num != $total && (
-				$num == $left - 1 || $num == $left + $context + 1
+				$num == $left - 1 || $num == $right + 1
 			);
 
 			if ($emptyRange) {
@@ -432,6 +433,13 @@ class PaginatedList extends SS_ListDecorator {
 		if ($this->NotFirstPage()) {
 			return HTTP::setGetVar($this->getPaginationGetVar(), $this->getPageStart() - $this->getPageLength());
 		}
+	}
+
+	/**
+	 * Returns the total number of items in the list
+	 */
+	public function TotalItems() {
+		return $this->getTotalItems();
 	}
 
 	/**

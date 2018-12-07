@@ -29,6 +29,8 @@
  * }
  * </code>
  *
+ * @todo remove MySQL specific code from subclasses
+ *
  * @package framework
  * @subpackage model
  */
@@ -59,6 +61,14 @@ abstract class DBField extends ViewableData {
 	private static $default_search_filter_class = 'PartialMatchFilter';
 
 	/**
+	 * Flag to indicate whether this data type is safe to automatically generate an index for
+	 *
+	 * @var bool
+	 * @config
+	 */
+	private static $auto_indexable = true;
+
+	/**
 	 * @var $default mixed Default-value in the database.
 	 * Might be overridden on DataObject-level, but still useful for setting defaults on
 	 * already existing records after a db-build.
@@ -83,7 +93,7 @@ abstract class DBField extends ViewableData {
 	 * @return DBField
 	 */
 	public static function create_field($className, $value, $name = null, $object = null) {
-		$dbField = Object::create($className, $name, $object);
+		$dbField = SS_Object::create($className, $name, $object);
 		$dbField->setValue($value, null, false);
 
 		return $dbField;
@@ -219,19 +229,19 @@ abstract class DBField extends ViewableData {
 	}
 
 	public function HTMLATT() {
-		return Convert::raw2htmlatt($this->value);
+		return Convert::raw2htmlatt($this->RAW());
 	}
 
 	public function URLATT() {
-		return urlencode($this->value);
+		return urlencode($this->RAW());
 	}
 
 	public function RAWURLATT() {
-		return rawurlencode($this->value);
+		return rawurlencode($this->RAW());
 	}
 
 	public function ATT() {
-		return Convert::raw2att($this->value);
+		return Convert::raw2att($this->RAW());
 	}
 
 	public function RAW() {
@@ -239,15 +249,23 @@ abstract class DBField extends ViewableData {
 	}
 
 	public function JS() {
-		return Convert::raw2js($this->value);
+		return Convert::raw2js($this->RAW());
+	}
+
+	/**
+	 * Return JSON encoded value
+	 * @return string
+	 */
+	public function JSON() {
+		return Convert::raw2json($this->RAW());
 	}
 
 	public function HTML(){
-		return Convert::raw2xml($this->value);
+		return Convert::raw2xml($this->RAW());
 	}
 
 	public function XML(){
-		return Convert::raw2xml($this->value);
+		return Convert::raw2xml($this->RAW());
 	}
 
 	/**

@@ -43,7 +43,10 @@ class CMSSecurity extends Security {
 	}
 
 	public function Link($action = null) {
-		return Controller::join_links(Director::baseURL(), "CMSSecurity", $action);
+		$link = Controller::join_links(Director::baseURL(), "CMSSecurity", $action);
+		// Give extensions the chance to modify by reference
+		$this->extend('updateLink', $link, $action);
+		return $link;
 	}
 
 	/**
@@ -195,9 +198,16 @@ PHP
 
 		// Get redirect url
 		$controller = $this->getResponseController(_t('CMSSecurity.SUCCESS', 'Success'));
-		$backURL = $this->getRequest()->requestVar('BackURL')
-			?: Session::get('BackURL')
-			?: Director::absoluteURL(AdminRootController::config()->url_base, true);
+		$backURLs = array(
+			$this->getRequest()->requestVar('BackURL'),
+			Session::get('BackURL'),
+			Director::absoluteURL(AdminRootController::config()->url_base, true),
+		);
+		foreach ($backURLs as $backURL) {
+			if ($backURL && Director::is_site_url($backURL)) {
+				break;
+			}
+		}
 
 		// Show login
 		$controller = $controller->customise(array(
@@ -206,7 +216,7 @@ PHP
 				'<p>Login success. If you are not automatically redirected '.
 				'<a target="_top" href="{link}">click here</a></p>',
 				'Login message displayed in the cms popup once a user has re-authenticated themselves',
-				array('link' => $backURL)
+				array('link' => Convert::raw2att($backURL))
 			)
 		));
 

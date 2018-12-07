@@ -4,7 +4,7 @@
  * @package framework
  * @subpackage filesystem
  */
-class GDBackend extends Object implements Image_Backend {
+class GDBackend extends SS_Object implements Image_Backend {
 	protected $gd, $width, $height;
 	protected $quality;
 	protected $interlace;
@@ -39,7 +39,7 @@ class GDBackend extends Object implements Image_Backend {
 		// If we're working with image resampling, things could take a while.  Bump up the time-limit
 		increase_time_limit_to(300);
 
-		$this->cache = SS_Cache::factory('GDBackend_Manipulations');
+		$this->cache = SS_Cache::factory('GDBackend_Manipulations', 'Output', array('disable-segmentation' => true));
 
 		if($filename && is_readable($filename)) {
 			$this->cacheKey = md5(implode('_', array($filename, filemtime($filename))));
@@ -108,6 +108,7 @@ class GDBackend extends Object implements Image_Backend {
 
 	/**
 	 * @param string $filename
+	 * @param string $manipulation
 	 * @return boolean
 	 */
 	public function imageAvailable($filename, $manipulation) {
@@ -219,6 +220,8 @@ class GDBackend extends Object implements Image_Backend {
 	 * @todo This method isn't very efficent
 	 */
 	public function fittedResize($width, $height) {
+		$width = intval($width);
+		$height = intval($height);
 		$gd = $this->resizeByHeight($height);
 		if($gd->width > $width) $gd = $gd->resizeByWidth($width);
 		return $gd;
@@ -248,7 +251,7 @@ class GDBackend extends Object implements Image_Backend {
 	 */
 	public function resize($width, $height) {
 		if(!$this->gd) return;
-		
+
 		if($width < 0 || $height < 0) throw new InvalidArgumentException("Image resizing dimensions cannot be negative");
 		if(!$width && !$height) throw new InvalidArgumentException("No dimensions given when resizing image");
 		if(!$width) throw new InvalidArgumentException("Width not given when resizing image");
@@ -320,6 +323,7 @@ class GDBackend extends Object implements Image_Backend {
 		}
 		$rotate=imagecreatetruecolor($destWidth,$destHeight);
 		imagealphablending($rotate, false);
+		imagesavealpha($rotate, true); // to maintain PNG transparency
 		for ($x = 0; $x < ($sourceWidth); $x++) {
 			for ($y = 0; $y < ($sourceHeight); $y++) {
 				$color = imagecolorat($this->gd, $x, $y);
@@ -353,6 +357,11 @@ class GDBackend extends Object implements Image_Backend {
 	*/
 
 	public function crop($top, $left, $width, $height) {
+		$top = intval($top);
+		$left = intval($left);
+		$width = intval($width);
+		$height = intval($height);
+
 		$newGD = imagecreatetruecolor($width, $height);
 
 		// Preserve alpha channel between images
@@ -389,6 +398,7 @@ class GDBackend extends Object implements Image_Backend {
 	 * Resize an image by width. Preserves aspect ratio.
 	 */
 	public function resizeByWidth( $width ) {
+		$width = intval($width);
 		$heightScale = $width / $this->width;
 		return $this->resize( $width, $heightScale * $this->height );
 	}
@@ -397,6 +407,7 @@ class GDBackend extends Object implements Image_Backend {
 	 * Resize an image by height. Preserves aspect ratio
 	 */
 	public function resizeByHeight( $height ) {
+		$height = intval($height);
 		$scale = $height / $this->height;
 		return $this->resize( $scale * $this->width, $height );
 	}
@@ -406,6 +417,8 @@ class GDBackend extends Object implements Image_Backend {
 	 * and maxHeight. Passing useAsMinimum will make the smaller dimension equal to the maximum corresponding dimension
 	 */
 	public function resizeRatio( $maxWidth, $maxHeight, $useAsMinimum = false ) {
+		$maxWidth = intval($maxWidth);
+		$maxHeight = intval($maxHeight);
 
 		$widthRatio = $maxWidth / $this->width;
 		$heightRatio = $maxHeight / $this->height;
@@ -416,14 +429,20 @@ class GDBackend extends Object implements Image_Backend {
 			return $useAsMinimum ? $this->resizeByWidth( $maxWidth ) : $this->resizeByHeight( $maxHeight );
 	}
 
-	public static function color_web2gd($image, $webColor) {
+	public static function color_web2gd($image, $webColor, $transparencyPercent = 0) {
 		if(substr($webColor,0,1) == "#") $webColor = substr($webColor,1);
 		$r = hexdec(substr($webColor,0,2));
 		$g = hexdec(substr($webColor,2,2));
 		$b = hexdec(substr($webColor,4,2));
 
+		if($transparencyPercent) {
+			if($transparencyPercent > 100) {
+				$transparencyPercent = 100;
+			}
+			$a = 127 * bcdiv($transparencyPercent, 100, 2);
+			return imagecolorallocatealpha($image, $r, $g, $b, $a);
+		}
 		return imagecolorallocate($image, $r, $g, $b);
-
 	}
 
 	/**
@@ -432,8 +451,11 @@ class GDBackend extends Object implements Image_Backend {
 	 * @param width
 	 * @param height
 	 * @param backgroundColour
+	 * @param transparencyPercent
 	 */
-	public function paddedResize($width, $height, $backgroundColor = "FFFFFF") {
+	public function paddedResize($width, $height, $backgroundColor = "FFFFFF", $transparencyPercent = 0) {
+		//keep the % within bounds of 0-100
+		$transparencyPercent = min(100, max(0, $transparencyPercent));
 		if(!$this->gd) return;
 		$width = round($width);
 		$height = round($height);
@@ -449,7 +471,7 @@ class GDBackend extends Object implements Image_Backend {
 		imagealphablending($newGD, false);
 		imagesavealpha($newGD, true);
 
-		$bg = GD::color_web2gd($newGD, $backgroundColor);
+		$bg = GD::color_web2gd($newGD, $backgroundColor, $transparencyPercent);
 		imagefilledrectangle($newGD, 0, 0, $width, $height, $bg);
 
 		$destAR = $width / $height;
@@ -485,14 +507,16 @@ class GDBackend extends Object implements Image_Backend {
 	}
 
 	/**
-	 * Make the image greyscale
-	 * $rv = red value, defaults to 38
-	 * $gv = green value, defaults to 36
-	 * $bv = blue value, defaults to 26
-	 * Based (more or less entirely, with changes for readability) on code from
-	 * http://www.teckis.com/scriptix/thumbnails/teck.html
+	 * Make the image greyscale.
+	 * Default color weights are based on standard BT.601 (those used in PAL, NTSC and many software packages, also see
+	 * https://en.wikipedia.org/wiki/Grayscale#Luma_coding_in_video_systems )
+	 *
+	 * $R = red weight, defaults to 299
+	 * $G = green weight, defaults to 587
+	 * $B = blue weight, defaults to 114
+	 * $brightness = brightness in percentage, defaults to 100
 	 */
-	public function greyscale($rv=38, $gv=36, $bv=26) {
+	public function greyscale($R=299, $G=587, $B=114, $brightness=100) {
 		$width = $this->width;
 		$height = $this->height;
 		$newGD = imagecreatetruecolor($this->width, $this->height);
@@ -501,15 +525,18 @@ class GDBackend extends Object implements Image_Backend {
 		imagealphablending($newGD, false);
 		imagesavealpha($newGD, true);
 
-		$rt = $rv + $bv + $gv;
-		$rr = ($rv == 0) ? 0 : 1/($rt/$rv);
-		$br = ($bv == 0) ? 0 : 1/($rt/$bv);
-		$gr = ($gv == 0) ? 0 : 1/($rt/$gv);
+		$rt = $R + $G + $B;
+		// if $rt is 0, bad parameters are provided, so result will be a black image
+		$rr = $rt ? $R/$rt : 0;
+		$gr = $rt ? $G/$rt : 0;
+		$br = $rt ? $B/$rt : 0;
+		// iterate over all pixels and make them grey
 		for($dy = 0; $dy < $height; $dy++) {
 			for($dx = 0; $dx < $width; $dx++) {
 				$pxrgb = imagecolorat($this->gd, $dx, $dy);
 				$heightgb = ImageColorsforIndex($this->gd, $pxrgb);
 				$newcol = ($rr*$heightgb['red']) + ($br*$heightgb['blue']) + ($gr*$heightgb['green']);
+				$newcol = min(255, $newcol*$brightness/100);
 				$setcol = ImageColorAllocateAlpha($newGD, $newcol, $newcol, $newcol, $heightgb['alpha']);
 				imagesetpixel($newGD, $dx, $dy, $setcol);
 			}

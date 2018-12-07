@@ -168,7 +168,7 @@ consideration, we provide a library for entwineUI style programming. In entwineU
 objects. entwine extends this concept beyond what is provided by other libraries to provide a very easy to use system
 with class like, ploymorphic, namespaced properties."
 
-Use jQuery.entwine when your code is likely to be customized by others, for example for most work in the CMS interface.
+Use jQuery.entwine when your code is likely to be customised by others, for example for most work in the CMS interface.
 It is also suited for more complex applications beyond a single-purpose plugin.
 
 Example: Highlighter
@@ -250,7 +250,7 @@ Ready](http://docs.jquery.com/How_jQuery_Works#Launching_Code_on_Document_Ready)
 jQuery supports automatically reapplying event handlers when new DOM elements get inserted, mostly through Ajax calls.
 This "binding" saves you from reapplying this step manually.
 
-Caution: Only applies to certain events, see the [jQuery.on() documentation](http://api.jquery.com/on/).
+Caution: Only applies to certain events, see the [jQuery.on() documentation](http://api.jquery.com/on/#direct-and-delegated-events).
 
 Example: Add a 'loading' classname to all pressed buttons
 
@@ -261,13 +261,10 @@ Example: Add a 'loading' classname to all pressed buttons
 	});
 
 	// binding, applies to any inserted elements as well
-	$('input[[type=submit]]').on(function() {
+	$('.cms-container').on('click', 'input[[type=submit]]', function() {
 	  $(this).addClass('loading');
 	});
 
-
-See [jQuery FAQ: Why do my events stop working after an AJAX
-request](http://docs.jquery.com/Frequently_Asked_Questions#Why_do_my_events_stop_working_after_an_AJAX_request.3F).
 
 ### Assume Element Collections
 
@@ -352,7 +349,7 @@ attributes, or the jQuery.metadata plugin). For returning status messages, pleas
 
 Only return evaluated JavaScript snippets if unavoidable. Most of the time you can just pass data around, and let the
 clientside react to changes appropriately without telling it directly through JavaScript in AJAX responses. Don't use
-the `[api:Form]` SilverStripe class, which is built solely around
+the [api:Form] SilverStripe class, which is built solely around
 this inflexible concept.
 
 Example: Autocomplete input field loading page matches through AJAX
@@ -423,7 +420,7 @@ JavaScript:
 
 Although they are the minority of cases, there are times when a simple HTML fragment isn't enough.  For example, if you
 have server side code that needs to trigger the update of a couple of elements in the CMS left-hand tree, it would be
-inefficient to send back the HTML of entire tree. SilverStripe can serialize to and from JSON (see the `[api:Convert]` class), and jQuery deals very well with it through
+inefficient to send back the HTML of entire tree. SilverStripe can serialize to and from JSON (see the [api:Convert] class), and jQuery deals very well with it through
 [jQuery.getJSON()](http://docs.jquery.com/Ajax/jQuery.getJSON#urldatacallback), as long as the HTTP content-type is
 properly set.
 

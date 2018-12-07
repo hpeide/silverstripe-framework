@@ -132,6 +132,26 @@ if(isset($_REQUEST['db'])) {
 			"database" => $_REQUEST['db'][$type]['database'],
 		);
 
+		// Set SSL parameters if they exist
+		if(
+			defined('SS_DATABASE_SSL_KEY') && 
+			defined('SS_DATABASE_SSL_CERT')
+			) {
+
+			$databaseConfig['ssl_key'] = SS_DATABASE_SSL_KEY;
+			$databaseConfig['ssl_cert'] = SS_DATABASE_SSL_CERT;
+
+		}
+
+		if(defined('SS_DATABASE_SSL_CA')) {
+			$databaseConfig['ssl_ca'] = SS_DATABASE_SSL_CA;
+		}
+
+		if(defined('SS_DATABASE_SSL_CIPHER')) {
+			$databaseConfig['ssl_cipher'] = SS_DATABASE_SSL_CIPHER;
+		}
+
+
 	} else {
 		// Normal behaviour without the environment
 		$databaseConfig = $_REQUEST['db'][$type];
@@ -1212,11 +1232,11 @@ class InstallRequirements {
 	}
 
 	public function hasErrors() {
-		return sizeof($this->errors);
+		return empty($this->errors) ? 0 : sizeof($this->errors);
 	}
 
 	public function hasWarnings() {
-		return sizeof($this->warnings);
+		return empty($this->warnings) ? 0 : sizeof($this->warnings);
 	}
 
 }
@@ -1307,7 +1327,9 @@ class Installer extends InstallRequirements {
 		$locale = isset($_POST['locale']) ? addcslashes($_POST['locale'], "\'") : 'en_US';
 		$type = addcslashes($config['db']['type'], "\'");
 		$dbConfig = $config['db'][$type];
-		$dbConfig = array_map(create_function('$v', 'return addcslashes($v, "\\\'");'), $dbConfig);
+		$dbConfig = array_map(function($v) {
+		    return addcslashes($v, "\\'");
+        }, $dbConfig);
 		if(!isset($dbConfig['path'])) $dbConfig['path'] = '';
 		if(!$dbConfig) {
 			echo "<p style=\"color: red\">Bad config submitted</p><pre>";
@@ -1540,6 +1562,12 @@ ErrorDocument 404 /assets/error-404.html
 ErrorDocument 500 /assets/error-500.html
 
 <IfModule mod_rewrite.c>
+
+	# Turn off index.php handling requests to the homepage fixes issue in apache >=2.4
+	<IfModule mod_dir.c>
+		DirectoryIndex disabled
+	</IfModule>
+
 	SetEnv HTTP_MOD_REWRITE On
 	RewriteEngine On
 	$baseClause
@@ -1549,7 +1577,7 @@ ErrorDocument 500 /assets/error-500.html
 	RewriteRule ^vendor(/|$) - [F,L,NC]
 	RewriteRule silverstripe-cache(/|$) - [F,L,NC]
 	RewriteRule composer\.(json|lock) - [F,L,NC]
-	
+
 	# Process through SilverStripe if no file with the requested name exists.
 	# Pass through the original path as a query parameter, and retain the existing parameters.
 	RewriteCond %{REQUEST_URI} ^(.*)$

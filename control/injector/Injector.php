@@ -64,6 +64,7 @@ use SilverStripe\Framework\Injector\Factory;
  *
  * Specify a configuration array of the format
  *
+ * <code>
  * array(
  *		array(
  *			'id'			=> 'BeanId',					// the name to be used if diff from the filename
@@ -96,6 +97,7 @@ use SilverStripe\Framework\Injector\Factory;
  *		// or simply
  *		'OtherBean'		=> 'SomeClass',
  * )
+ * </code>
  *
  * In addition to specifying the bindings directly in the configuration,
  * you can simply create a publicly accessible property on the target
@@ -180,11 +182,11 @@ class Injector {
 	 * @var Factory
 	 */
 	protected $objectCreator;
-	
+
 	/**
 	 * Locator for determining Config properties for services
-	 * 
-	 * @var ServiceConfigurationLocator 
+	 *
+	 * @var ServiceConfigurationLocator
 	 */
 	protected $configLocator;
 
@@ -258,7 +260,7 @@ class Injector {
 	 * @return Injector Reference to new active Injector instance
 	 */
 	public static function nest() {
-		$current = self::$instance;
+		$current = self::inst();
 
 		$new = clone $current;
 		$new->nestedFrom = $current;
@@ -547,6 +549,11 @@ class Injector {
 		$constructorParams = array();
 		if (isset($spec['constructor']) && is_array($spec['constructor'])) {
 			$constructorParams = $spec['constructor'];
+		}
+
+		// If we're dealing with a DataObject, pass through Singleton flag as second argument
+		if ($type != 'prototype' && empty($constructorParams) && is_subclass_of($class, 'DataObject')) {
+			$constructorParams = array(null, true);
 		}
 
 		$factory = isset($spec['factory']) ? $this->get($spec['factory']) : $this->getObjectCreator();

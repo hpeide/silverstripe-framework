@@ -84,7 +84,8 @@ class MySQLSchemaManager extends DBSchemaManager {
 			}
 		}
 
-		if ($alteredOptions && isset($alteredOptions[get_class($this)])) {
+		$dbID = self::ID;
+		if ($alteredOptions && isset($alteredOptions[$dbID])) {
 			$indexList = $this->indexList($tableName);
 			$skip = false;
 			foreach ($indexList as $index) {
@@ -98,14 +99,14 @@ class MySQLSchemaManager extends DBSchemaManager {
 					sprintf(
 						"Table %s options not changed to %s due to fulltextsearch index",
 						$tableName,
-						$alteredOptions[get_class($this)]
+						$alteredOptions[$dbID]
 					),
 					"changed"
 				);
 			} else {
-				$this->query(sprintf("ALTER TABLE \"%s\" %s", $tableName, $alteredOptions[get_class($this)]));
+				$this->query(sprintf("ALTER TABLE \"%s\" %s", $tableName, $alteredOptions[$dbID]));
 				$this->alterationMessage(
-					sprintf("Table %s options changed: %s", $tableName, $alteredOptions[get_class($this)]),
+					sprintf("Table %s options changed: %s", $tableName, $alteredOptions[$dbID]),
 					"changed"
 				);
 			}
@@ -125,9 +126,16 @@ class MySQLSchemaManager extends DBSchemaManager {
 	}
 
 	public function checkAndRepairTable($tableName) {
+		// Flag to ensure we only send the warning about PDO + native mode once
+		static $pdo_warning_sent = false;
+
 		// If running PDO and not in emulated mode, check table will fail
 		if($this->database->getConnector() instanceof PDOConnector && !PDOConnector::is_emulate_prepare()) {
-			$this->alterationMessage('CHECK TABLE command disabled for PDO in native mode', 'notice');
+			if (!$pdo_warning_sent) {
+				$this->alterationMessage('CHECK TABLE command disabled for PDO in native mode', 'notice');
+				$pdo_warning_sent = true;
+			}
+
 			return true;
 		}
 
@@ -187,7 +195,9 @@ class MySQLSchemaManager extends DBSchemaManager {
 	}
 
 	public function createDatabase($name) {
-		$this->query("CREATE DATABASE \"$name\" DEFAULT CHARACTER SET utf8 DEFAULT COLLATE utf8_general_ci");
+		$charset = Config::inst()->get('MySQLDatabase', 'charset');
+		$collation = Config::inst()->get('MySQLDatabase', 'collation');
+		$this->query("CREATE DATABASE \"$name\" DEFAULT CHARACTER SET {$charset} DEFAULT COLLATE {$collation}");
 	}
 
 	public function dropDatabase($name) {
@@ -326,7 +336,7 @@ class MySQLSchemaManager extends DBSchemaManager {
 
 	public function tableList() {
 		$tables = array();
-		foreach ($this->query("SHOW TABLES") as $record) {
+		foreach ($this->query("SHOW FULL TABLES WHERE Table_Type != 'VIEW'") as $record) {
 			$table = reset($record);
 			$tables[strtolower($table)] = $table;
 		}
@@ -400,15 +410,17 @@ class MySQLSchemaManager extends DBSchemaManager {
 			$precision = $values['precision'];
 		}
 
-		$defaultValue = '';
+		// Fix format of default value to match precision
 		if (isset($values['default']) && is_numeric($values['default'])) {
 			$decs = strpos($precision, ',') !== false
 					? (int) substr($precision, strpos($precision, ',') + 1)
 					: 0;
-			$defaultValue = ' default ' . number_format($values['default'], $decs, '.', '');
+			$values['default'] = number_format($values['default'], $decs, '.', '');
+		} else {
+			unset($values['default']);
 		}
 
-		return "decimal($precision) not null $defaultValue";
+		return "decimal($precision) not null" . $this->defaultClause($values);
 	}
 
 	/**
@@ -424,7 +436,9 @@ class MySQLSchemaManager extends DBSchemaManager {
 		//DB::requireField($this->tableName, $this->name, "enum('" . implode("','", $this->enum) . "') character set
 		// utf8 collate utf8_general_ci default '{$this->default}'");
 		$valuesString = implode(",", Convert::raw2sql($values['enums'], true));
-		return "enum($valuesString) character set utf8 collate utf8_general_ci" . $this->defaultClause($values);
+		$charset = Config::inst()->get('MySQLDatabase', 'charset');
+		$collation = Config::inst()->get('MySQLDatabase', 'collation');
+		return "enum($valuesString) character set {$charset} collate {$collation}" . $this->defaultClause($values);
 	}
 
 	/**
@@ -440,7 +454,9 @@ class MySQLSchemaManager extends DBSchemaManager {
 		//DB::requireField($this->tableName, $this->name, "enum('" . implode("','", $this->enum) . "') character set
 		//utf8 collate utf8_general_ci default '{$this->default}'");
 		$valuesString = implode(",", Convert::raw2sql($values['enums'], true));
-		return "set($valuesString) character set utf8 collate utf8_general_ci" . $this->defaultClause($values);
+		$charset = Config::inst()->get('MySQLDatabase', 'charset');
+		$collation = Config::inst()->get('MySQLDatabase', 'collation');
+		return "set($valuesString) character set {$charset} collate {$collation}" . $this->defaultClause($values);
 	}
 
 	/**
@@ -471,6 +487,22 @@ class MySQLSchemaManager extends DBSchemaManager {
 	}
 
 	/**
+	 * Return a bigint type-formatted string
+	 *
+	 * @param array $values Contains a tokenised list of info about this data type
+	 * @return string
+	 */
+	public function bigint($values) {
+		//For reference, this is what typically gets passed to this function:
+		//$parts=Array('datatype'=>'bigint', 'precision'=>20, 'null'=>'not null', 'default'=>$this->defaultVal,
+		//             'arrayValue'=>$this->arrayValue);
+		//$values=Array('type'=>'bigint', 'parts'=>$parts);
+		//DB::requireField($this->tableName, $this->name, $values);
+
+		return 'bigint(20) not null' . $this->defaultClause($values);
+	}
+
+	/**
 	 * Return a datetime type-formatted string
 	 * For MySQL, we simply return the word 'datetime', no other parameters are necessary
 	 *
@@ -494,7 +526,9 @@ class MySQLSchemaManager extends DBSchemaManager {
 		//For reference, this is what typically gets passed to this function:
 		//$parts=Array('datatype'=>'mediumtext', 'character set'=>'utf8', 'collate'=>'utf8_general_ci');
 		//DB::requireField($this->tableName, $this->name, "mediumtext character set utf8 collate utf8_general_ci");
-		return 'mediumtext character set utf8 collate utf8_general_ci' . $this->defaultClause($values);
+		$charset = Config::inst()->get('MySQLDatabase', 'charset');
+		$collation = Config::inst()->get('MySQLDatabase', 'collation');
+		return 'mediumtext character set ' . $charset . ' collate ' . $collation . $this->defaultClause($values);
 	}
 
 	/**
@@ -524,7 +558,9 @@ class MySQLSchemaManager extends DBSchemaManager {
 		//DB::requireField($this->tableName, $this->name, "varchar($this->size) character set utf8 collate
 		// utf8_general_ci");
 		$default = $this->defaultClause($values);
-		return "varchar({$values['precision']}) character set utf8 collate utf8_general_ci$default";
+		$charset = Config::inst()->get('MySQLDatabase', 'charset');
+		$collation = Config::inst()->get('MySQLDatabase', 'collation');
+		return "varchar({$values['precision']}) character set {$charset} collate {$collation}{$default}";
 	}
 
 	/*

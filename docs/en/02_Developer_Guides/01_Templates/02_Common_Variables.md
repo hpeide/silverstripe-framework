@@ -8,7 +8,9 @@ exhaustive list. From your template you can call any method, database field, or 
 currently in scope as well as its' subclasses or extensions. 
 
 Knowing what methods you can call can be tricky, but the first step is to understand the scope you're in. Scope is 
-explained in more detail on the [syntax](syntax#scope) page.
+explained in more detail on the [syntax](syntax#scope) page. Many of the methods listed below can be called from any 
+scope, and you can specify additional static methods to be available globally in templates by implementing the 
+[api:TemplateGlobalProvider] interface.
 
 <div class="notice" markdown="1">
 Want a quick way of knowing what scope you're in? Try putting `$ClassName` in your template. You should see a string 
@@ -153,30 +155,30 @@ link.
 ### Linking Modes
 
 	:::ss
-	$LinkingMode
+	$isSection
+	$isCurrent
 
-When looping over a list of `SiteTree` instances through a `<% loop $Menu %>` or `<% loop $Children %>`, `$LinkingMode`
-will return context about the page relative to the currently viewed page. It can have the following values:
-
- * `link`: You are neither on this page nor in this section.
- * `current`: You are currently on this page.
- * `section`: The current page is a child of this menu item, so the current "section"
+When looping over a list of `SiteTree` instances through a `<% loop $Menu %>` or `<% loop $Children %>`, `$isSection` and `$isCurrent`
+will return true or false based on page being looped over relative to the currently viewed page. 
 
 For instance, to only show the menu item linked if it's the current one:
 
 	:::ss
-	<% if $LinkingMode = current %>
+	<% if $isCurrent %>
 		$Title
 	<% else %>
 		<a href="$Link">$Title</a>
 	<% end_if %>
+	
+An example for checking for `current` or `section` is as follows:
 
-`$LinkingMode` is reused for several other variables and utility functions.
+    :::ss
+    <a class="<% if $isCurrent %>current<% else_if $isSection %>section<% end_if %>" href="$Link">$MenuTitle</a>
 
- * `$LinkOrCurrent`: Determines if the item is the current page. Returns "link" or "current" strings.
- * `$LinkOrSection`: Determines if the item is in the current section, so in the path towards the current page. Useful 
- for menus which you only want to show a second level menu when you are on that page or a child of it. Returns "link" 
- or "section" strings.
+
+
+**Additional Utility Method**
+
  * `$InSection(page-url)`: This if block will pass if we're currently on the page-url page or one of its children.
 
 	:::ss
@@ -302,62 +304,7 @@ For example, imagine you're on the "bob marley" page, which is three levels in: 
 
 ## Navigating Scope
 
-### Me
-
-`$Me` outputs the current object in scope. This will call the `forTemplate` of the object.
-
-	:::ss
-	$Me
-
-
-### Up
-
-When in a particular scope, `$Up` takes the scope back to the previous level.
-
-	:::ss
-	<h1>Children of '$Title'</h1>
-
-	<% loop $Children %>
-		<p>Page '$Title' is a child of '$Up.Title'</p>
-	
-		<% loop $Children %>
-			<p>Page '$Title' is a grandchild of '$Up.Up.Title'</p>
-		<% end_loop %>
-	<% end_loop %>
-
-Given the following structure, it will output the text.
-	
-	My Page
-	|
-	+-+ Child 1
- 	| 	|
- 	| 	+- Grandchild 1
- 	|
- 	+-+ Child 2
-
-	Children of 'My Page'
-
-	Page 'Child 1' is a child of 'My Page'
-	Page 'Grandchild 1' is a grandchild of 'My Page'
-	Page 'Child 2' is a child of 'MyPage'
-
-
-### Top
-
-While `$Up` provides us a way to go up one level of scope, `$Top` is a shortcut to jump to the top most scope of the 
-page. The  previous example could be rewritten to use the following syntax.
-
-	:::ss
-	<h1>Children of '$Title'</h1>
-
-	<% loop $Children %>
-		<p>Page '$Title' is a child of '$Top.Title'</p>
-	
-		<% loop $Children %>
-			<p>Page '$Title' is a grandchild of '$Top.Title'</p>
-		<% end_loop %>
-	<% end_loop %>
-
+See [scope](syntax#scope).
 
 ## Breadcrumbs
 
@@ -380,7 +327,7 @@ By default, it uses the template defined in `cms/templates/BreadcrumbsTemplate.s
 	<% end_if %>
 
 <div class="info" markdown="1">
-To customize the markup that the `$Breadcrumbs` generates, copy `cms/templates/BreadcrumbsTemplate.ss` to 
+To customise the markup that the `$Breadcrumbs` generates, copy `cms/templates/BreadcrumbsTemplate.ss` to 
 `mysite/templates/BreadcrumbsTemplate.ss`, modify the newly copied template and flush your SilverStripe cache.
 </div>
 
@@ -403,7 +350,7 @@ You can add your own forms by implementing new form instances (see the [Forms tu
 
 ## API Documentation
 
- * `[api:ContentController]`: The main controller responsible for handling pages.
- * `[api:Controller]`: Generic controller (not specific to pages.)
- * `[api:DataObject]`: Underlying model class for page objects.
- * `[api:ViewableData]`: Underlying object class for pretty much anything displayable.
+ * [api:ContentController]: The main controller responsible for handling pages.
+ * [api:Controller]: Generic controller (not specific to pages.)
+ * [api:DataObject]: Underlying model class for page objects.
+ * [api:ViewableData]: Underlying object class for pretty much anything displayable.

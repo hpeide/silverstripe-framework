@@ -3,13 +3,13 @@ summary: Send HTML and plain text email from your SilverStripe application.
 # Email
 
 Creating and sending email in SilverStripe is done through the [api:Email] and [api:Mailer] classes. This document 
-covers how to create an `Email` instance, customize it with a HTML template, then send it through a custom `Mailer`.
+covers how to create an `Email` instance, customise it with a HTML template, then send it through a custom `Mailer`.
 
 ## Configuration
 
 Out of the box, SilverStripe will use the built-in PHP `mail()` command. If you are not running an SMTP server, you 
 will need to either configure PHP's SMTP settings (see [PHP documentation](http://php.net/mail) to include your mail 
-server configuration or use one of the third party SMTP services like [Mandrill](https://github.com/lekoala/silverstripe-mandrill) 
+server configuration or use one of the third party SMTP services like [SparkPost](https://github.com/lekoala/silverstripe-sparkpost) 
 and [Postmark](https://github.com/fullscreeninteractive/silverstripe-postmarkmailer).
 
 ## Usage
@@ -32,7 +32,7 @@ to `*text*`).
 
 <div class="info" markdown="1">
 The default HTML template for emails is named `GenericEmail` and is located in `framework/templates/email/`. To 
-customize this template, copy it to the `mysite/templates/Email/` folder or use `setTemplate` when you create the 
+customise this template, copy it to the `mysite/templates/Email/` folder or use `setTemplate` when you create the 
 `Email` instance.
 </div>
 
@@ -121,7 +121,7 @@ You can set the default sender address of emails through the `Email.admin_email`
 
 <div class="alert" markdown="1">
 Remember, setting a `from` address that doesn't come from your domain (such as the users email) will likely see your
-email marked as spam. If you want to send from another address think about using the `replyTo` method.
+email marked as spam. If you want to send from another address think about using the `setReplyTo` method.
 </div>
 
 ## Redirecting Emails
@@ -144,11 +144,13 @@ Configuration of those properties looks like the following:
 		Config::inst()->update('Email', 'send_all_emails_to', "developer@example.com");
 	}
 
-### Setting custom replyTo
+### Setting custom "Reply To" email address.
+
+For email messages that should have an email address which is replied to that actually differs from the original "from" email, do the following. This is encouraged especially when the domain responsible for sending the message isn't necessarily the same which should be used for return correspondence and should help prevent your message from being marked as spam. 
 
 	:::php
 	$email = new Email(..);
-	$email->replyTo('me@address.com');
+	$email->setReplyTo('me@address.com');
 
 ### Setting Custom Headers
 

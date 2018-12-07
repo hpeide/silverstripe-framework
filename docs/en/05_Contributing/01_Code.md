@@ -1,15 +1,15 @@
 title: Contributing Code
 summary: Fix bugs and add new features to help make SilverStripe better.
 
-# Contributing Code - Submiting Bugfixes and Enhancements
+# Contributing Code - Submitting Bugfixes and Enhancements
 
 SilverStripe will never be finished, and we need your help to keep making it better.  If you're a developer a great way to get involved is to contribute patches to our modules and core codebase, fixing bugs or adding features.
 
 The SilverStripe core modules (`framework` and `cms`), as well as some of the more popular modules are in
-git version control. SilverStripe hosts its modules on [github.com/silverstripe](http://github.com/silverstripe) and [github.com/silverstripe-labs](http://github.com/silverstripe-labs).  After [installing git](http://help.github.com/git-installation-redirect) and creating a [free github.com account](https://github.com/signup/free), you can "fork" a module,
-which creates a copy that you can commit to (see github's [guide to "forking"](http://help.github.com/forking/)).
+git version control. SilverStripe hosts its modules on [github.com/silverstripe](https://github.com/silverstripe/).  After [installing git](https://help.github.com/articles/set-up-git/) and creating a [free github.com account](https://github.com/join/), you can "fork" a module,
+which creates a copy that you can commit to (see github's [guide to "forking"](https://help.github.com/articles/fork-a-repo/)).
 
-For other modules, our [add-ons site](http://addons.silverstripe.org/add-ons) lists the repository locations, typically using the version control system like "git".
+For other modules, our [add-ons site](https://addons.silverstripe.org/add-ons/) lists the repository locations, typically using the version control system like "git".
 
 <div class="hint" markdown="1">
 Note: By supplying code to the SilverStripe core team in patches, tickets and pull requests, you agree to assign copyright of that code to SilverStripe Limited, on the condition that SilverStripe Limited releases that code under the BSD license.
@@ -71,6 +71,39 @@ We ask for this so that the ownership in the license is clear and unambiguous, a
 The core team is then responsible for reviewing patches and deciding if they will make it into core.  If
 there are any problems they will follow up with you, so please ensure they have a way to contact you!
 
+
+### Picking the right version
+
+SilverStripe core and module releases (since the 3.1.8 release) follow the [Semantic Versioning](http://semver.org) 
+(SemVer) specification for releases. Using this specification declares to the entire development community the severity 
+and intention of each release. It gives developers the ability to safely declare their dependencies and understand the
+scope involved in each upgrade.
+
+Each release is labeled in the format `$MAJOR`.`$MINOR`.`$PATCH`. For example, 3.1.8 or 3.2.0.
+
+* `$MAJOR` version is incremented if any backwards incompatible changes are introduced to the public API. 
+* `$MINOR` version is incremented if new, backwards compatible **functionality** is introduced to the public API or 
+	improvements are introduced within the private code. 
+* `$PATCH` version is incremented if only backwards compatible **bug fixes** are introduced. A bug fix is defined as 
+	an internal change that fixes incorrect behavior.
+
+**Public API** refers to any aspect of the system that has been designed to be used by SilverStripe modules & site developers. In SilverStripe 3, because we haven't been clear, in principle we have to treat every public or protected method as *potentially* part of the public API, but sometimes it comes to a judgement call about how likely it is that a given method will have been used in a particular way. If we were strict about never changing publicly exposed behaviour, it would be difficult to fix any bug whatsoever, which isn't in the interests of our user community.
+
+In future major releases of SilverStripe, we will endeavour to be more explicit about documenting the public API.
+
+**Contributing bug fixes**
+
+Bug fixes should be raised against the most recent MINOR release branch. For example, If your project is on 3.3.1 and 3.4.0 is released, please raise your bugfix against the `3.4` branch. Older MINOR release branches are primarily intended for critical bugfixes and security issues.
+
+**Contributing features**
+
+When contributing a backwards compatible change, raise it against the same MAJOR branch as your project. For example, if your project is on 3.3.1, raise it against the `3` branch. It will be included in the next MINOR release, e.g. 3.4.0. And then when it is released, you should upgrade your project to use it. As it is a MINOR change, it shouldn't break anything, and be a relatively painless upgrade.
+
+**Contributing backwards-incompatible public API changes, and removing or radically changing existing feautres**
+
+When contributing a backwards incompatible change, you must raise it against the `master` branch.
+
+
 ### The Pull Request Process
 
 Once your pull request is issued, it's not the end of the road. A [core committer](/contributing/core_committers/) will most likely have some questions for you and may ask you to make some changes depending on discussions you have.
@@ -109,12 +142,12 @@ The current GitHub labels are grouped into 5 sections:
 
 ### Workflow Diagram
 
-[![Workflow diagram](http://www.silverstripe.org/assets/doc-silverstripe-org/collaboration-on-github.png)](http://www.silverstripe.org/assets/doc-silverstripe-org/collaboration-on-github.png)
+[![Workflow diagram](https://www.silverstripe.org/assets/doc-silverstripe-org/collaboration-on-github.png)](https://www.silverstripe.org/assets/doc-silverstripe-org/collaboration-on-github.png)
 
 ### Quickfire Do's and Don't's
 
-If you aren't familiar with git and GitHub, try reading the ["GitHub bootcamp documentation"](http://help.github.com/). 
-We also found the [free online git book](http://git-scm.com/book/) and the [git crash course](http://gitref.org/) useful.
+If you aren't familiar with git and GitHub, try reading the ["GitHub bootcamp documentation"](https://help.github.com/). 
+We also found the [free online git book](https://git-scm.com/book/en/v2) and the [git crash course](https://services.github.com/) useful.
 If you're familiar with it, here's the short version of what you need to know. Once you fork and download the code:
 
 * **Don't develop on the master branch.** Always create a development branch specific to "the issue" you're working on (on our [GitHub repository's issues](https://github.com/silverstripe/silverstripe-framework/issues)). Name it by issue number and description. For example, if you're working on Issue #100, a `DataObject::get_one()` bugfix, your development branch should be called 100-dataobject-get-one. If you decide to work on another issue mid-stream, create a new branch for that issue--don't work on both in one branch.
@@ -125,10 +158,7 @@ If you're familiar with it, here's the short version of what you need to know. O
 
 * **Squash your commits, so that each commit addresses a single issue.** After you rebase your work on top of the upstream master, you can squash multiple commits into one. Say, for instance, you've got three commits in related to Issue #100. Squash all three into one with the message "Description of the issue here (fixes #100)" We won't accept pull requests for multiple commits related to a single issue; it's up to you to squash and clean your commit tree. (Remember, if you squash commits you've already pushed to GitHub, you won't be able to push that same branch again. Create a new local branch, squash, and push the new squashed branch.)
 
-* **Choose the correct branch**: Assume the current release is 3.0.3, and 3.1.0 is in beta state.
-Most pull requests should go against the `3.1.x-dev` *pre-release branch*, only critical bugfixes
-against the `3.0.x-dev` *release branch*. If you're changing an API or introducing a major feature,
-the pull request should go against `master` (read more about our [release process](release_process)). Branches are periodically merged "upwards" (3.0 into 3.1, 3.1 into master).
+* **Choose the correct branch**: see [Picking the right version](#picking-the-right-version).
 
 ### Editing files directly on GitHub.com
 
@@ -143,15 +173,16 @@ After you have edited the file, GitHub will offer to create a pull request for y
 * When working on existing tickets, provide status updates through ticket comments
 * Check your patches against the "master" branch, as well as the latest release branch
 * Write [unit tests](../developer_guides/testing/unit_testing)
-* Write [Behat integration tests](https://github.com/silverstripe-labs/silverstripe-behat-extension) for any interface changes
+* Write [Behat integration tests](https://github.com/silverstripe/silverstripe-behat-extension) for any interface changes
 * Describe specifics on how to test the effects of the patch
 * It's better to submit multiple patches with separate bits of functionality than a big patch containing lots of changes
 * Only submit a pull request for work you expect to be ready to merge. Work in progress is best discussed in an issue, or on your own repository fork.
-* Document your code inline through [PHPDoc](http://en.wikipedia.org/wiki/PHPDoc) syntax. See our 
-[API documentation](http://api.silverstripe.org/3.1/) for good examples.
-* Check and update documentation on [docs.silverstripe.org](http://docs.silverstripe.org). Check for any references to functionality deprecated or extended through your patch. Documentation changes should be included in the patch.
-* If you get stuck, please post to the [forum](http://silverstripe.org/forum) or for deeper core problems, to the [core mailinglist](https://groups.google.com/forum/#!forum/silverstripe-dev)
-* When working with the CMS, please read the ["CMS Architecture Guide"](/developer_guides/customising_the_admin_interface/cms_architecture/) first
+* Document your code inline through [PHPDoc](https://en.wikipedia.org/wiki/PHPDoc) syntax. See our 
+[API documentation](https://api.silverstripe.org/) for good examples.
+* Check and update documentation on [docs.silverstripe.org](https://docs.silverstripe.org). Check for any references to functionality deprecated or extended through your patch. Documentation changes should be included in the patch.
+* When introducing something "noteworthy" (new feature, API change), [update the release changelog](/changelogs) for the next release this commit will be included in.
+* If you get stuck, please post to the [forum](https://www.silverstripe.org/community/forums) or for deeper core problems, to the [core mailinglist](https://groups.google.com/forum/#!forum/silverstripe-dev)
+* When working with the CMS, please read the ["CMS Architecture Guide"](/developer_guides/customising_the_admin_interface/cms_architecture) first
 
 ## Commit Messages
 
@@ -160,7 +191,7 @@ Most importantly: Keep the first line short, and add more detail below.
 This ensures commits are easy to browse, and look nice on github.com
 (more info about [proper git commit messages](http://tbaggery.com/2008/04/19/a-note-about-git-commit-messages.html)).
 
-As we automatically generate [changelogs](http://doc.silverstripe.org/sapphire/en/trunk/changelogs/) from them, we need a way to categorize and filter. 
+As we automatically generate [changelogs](https://docs.silverstripe.org/en/changelogs/) from them, we need a way to categorize and filter. 
 Please prefix **noteworthy** commit messages with one of the following tags: 
 
 * `NEW` New feature or major enhancement (both for users and developers)
@@ -175,7 +206,7 @@ Same goes for version control plumbing like merges, file renames or reverts.
 Further guidelines:
 
 * Each commit should form a logical unit - if you fix two unrelated bugs, commit each one separately
-* If you are fixing a issue from our bugtracker ([cms](http://github.com/silverstripe/silverstripe-framework) and [framework](http://github.com/silverstripe/silverstripe-framework)), please append `(fixes #<ticketnumber>)`
+* If you are fixing a issue from our bugtracker ([cms](https://github.com/silverstripe/silverstripe-framework) and [framework](https://github.com/silverstripe/silverstripe-framework)), please append `(fixes #<ticketnumber>)`
 * When fixing issues across repos (e.g. a commit to `framework` fixes an issue raised in the `cms` bugtracker),
   use `(fixes silverstripe/silverstripe-cms#<issue-number>)` ([details](https://github.com/blog/1439-closing-issues-across-repositories))
 * If your change is related to another commit, reference it with its abbreviated commit hash. 
@@ -313,7 +344,7 @@ It's as if you had just started your branch. One immediate advantage you get is 
 
 So when you're ready to send the new plugin upstream, you do one last rebase, test, and then merge (which is really no merge at all) and send out your pull request. Then in most cases, we have a simple fast-forward on our end (or at worst a very small rebase or merge) and over time that adds up to a simpler tree.
 
-More info on the ["Rebasing" chapter on git-scm.com](http://git-scm.com/book/ch3-6.html) and the [git rebase man page](http://www.kernel.org/pub/software/scm/git/docs/git-rebase.html).
+More info on the ["Rebasing" chapter on git-scm.com](http://git-scm.com/book/ch3-6.html) and the [git rebase man page](https://www.kernel.org/pub/software/scm/git/docs/git-rebase.html).
 
 ## License
 

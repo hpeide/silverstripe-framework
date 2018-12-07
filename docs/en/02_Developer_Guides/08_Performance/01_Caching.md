@@ -4,26 +4,26 @@
 
 The framework uses caches to store infrequently changing values.
 By default, the storage mechanism is simply the filesystem, although
-other cache backends can be configured. All caches use the `[api:SS_Cache]` API.
+other cache backends can be configured. All caches use the [api:SS_Cache] API.
 
 The most common caches are manifests of various resources: 
 
- * PHP class locations (`[api:SS_ClassManifest]`)
- * Template file locations and compiled templates (`[api:SS_TemplateManifest]`)
- * Configuration settings from YAML files (`[api:SS_ConfigManifest]`)
- * Language files (`[api:i18n]`)
+ * PHP class locations ([api:SS_ClassManifest])
+ * Template file locations and compiled templates ([api:SS_TemplateManifest])
+ * Configuration settings from YAML files ([api:SS_ConfigManifest])
+ * Language files ([api:i18n])
 
 Flushing the various manifests is performed through a GET
 parameter (`flush=1`). Since this action requires more server resources than normal requests,
 executing the action is limited to the following cases when performed via a web request:
 
- * The [environment](../getting_started/environment_management) is in "dev mode"
+ * The [environment](/getting_started/environment_management) is in "dev mode"
  * A user is logged in with ADMIN permissions
  * An error occurs during startup
 
 ## The Cache API
 
-The `[api:SS_Cache]` class provides a bunch of static functions wrapping the Zend_Cache system 
+The [api:SS_Cache] class provides a bunch of static functions wrapping the Zend_Cache system 
 in something a little more easy to use with the SilverStripe config system.
 
 A `Zend_Cache` has both a frontend (determines how to get the value to cache, 
@@ -90,6 +90,20 @@ e.g. by including the `LastEdited` value when caching `DataObject` results.
 	// set all caches to 3 hours
 	SS_Cache::set_cache_lifetime('any', 60*60*3);
 
+### Versioned cache segmentation
+
+`SS_Cache` segments caches based on the versioned reading mode. This prevents developers 
+from caching draft data and then accidentally exposing it on the live stage without potentially 
+required authorisation checks. This segmentation is automatic for all caches generated using
+`SS_Cache::factory` method.
+
+Data that is not content sensitive can be cached across stages by simply opting out of the
+segmented cache with the `disable-segmentation` argument.
+
+```php
+$cache = SS_Cache::factory('myapp', 'Output', array('disable-segmentation' => true));
+``` 
+
 ## Alternative Cache Backends
 
 By default, SilverStripe uses a file-based caching backend.
@@ -114,7 +128,7 @@ To use this backend, you need a memcached daemon and the memcache PECL extension
  	:::php
 	// _config.php 
 	SS_Cache::add_backend(
-		'primary_memcached', 
+		'primary_memcached',
 		'Memcached',
 		array(
 			'servers' => array(
@@ -125,7 +139,29 @@ To use this backend, you need a memcached daemon and the memcache PECL extension
 				'timeout' => 5,
 				'retry_interval' => 15, 
 				'status' => true, 
-				'failure_callback' => ''
+				'failure_callback' => null
+			)
+		)
+	);
+	SS_Cache::pick_backend('primary_memcached', 'any', 10);
+	
+If your Memcached instance is using a local Unix socket instead of a network port:
+
+ 	:::php
+	// _config.php 
+	SS_Cache::add_backend(
+		'primary_memcached',
+		'Memcached',
+		array(
+		  	'servers' => array(
+				'host' => 'unix:///path/to/memcached.socket',
+				'port' => 0,
+				'persistent' => true,
+				'weight' => 1,
+				'timeout' => 5,
+				'retry_interval' => 15,
+				'status' => true,
+				'failure_callback' => null
 			)
 		)
 	);

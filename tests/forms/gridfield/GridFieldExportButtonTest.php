@@ -48,7 +48,25 @@ class GridFieldExportButtonTest extends SapphireTest {
 		$button->setExportColumns(array('Name' => 'My Name'));
 
 		$this->assertEquals(
-			"\"My Name\"\n\"Test\"\n\"Test2\"\n",
+			'"My Name"'."\n".
+			'Test'."\n".
+			'Test2'."\n",
+			$button->generateExportFileData($this->gridField)
+		);
+	}
+
+	public function testXLSSanitisation() {
+		// Create risky object
+		$object = new GridFieldExportButtonTest_Team();
+		$object->Name = '=SUM(1, 2)';
+		$object->write();
+
+		// Export
+		$button = new GridFieldExportButton();
+		$button->setExportColumns(array('Name' => 'My Name'));
+
+		$this->assertEquals(
+			"\"My Name\"\n\"\t=SUM(1, 2)\"\nTest\nTest2\n",
 			$button->generateExportFileData($this->gridField)
 		);
 	}
@@ -63,7 +81,9 @@ class GridFieldExportButtonTest extends SapphireTest {
 		));
 
 		$this->assertEquals(
-			"\"Name\",\"City\"\n\"Test\",\"City city\"\n\"Test2\",\"City2 city\"\n",
+			'Name,City'."\n".
+			'Test,"City city"'."\n".
+			'Test2,"Quoted ""City"" 2 city"'."\n",
 			$button->generateExportFileData($this->gridField)
 		);
 	}
@@ -76,7 +96,9 @@ class GridFieldExportButtonTest extends SapphireTest {
 		));
 
 		$this->assertEquals(
-			"\"Name\",\"strtolower\"\n\"Test\",\"City\"\n\"Test2\",\"City2\"\n",
+			'Name,strtolower'."\n".
+			'Test,City'."\n".
+			'Test2,"Quoted ""City"" 2"'."\n",
 			$button->generateExportFileData($this->gridField)
 		);
 	}
@@ -90,28 +112,56 @@ class GridFieldExportButtonTest extends SapphireTest {
 		$button->setCsvHasHeader(false);
 
 		$this->assertEquals(
-			"\"Test\",\"City\"\n\"Test2\",\"City2\"\n",
+			'Test,City'."\n".
+			'Test2,"Quoted ""City"" 2"'."\n",
 			$button->generateExportFileData($this->gridField)
 		);
 	}
-	
+
 	public function testArrayListInput() {
 		$button = new GridFieldExportButton();
 		$this->gridField->getConfig()->addComponent(new GridFieldPaginator());
-		
+
 		//Create an ArrayList 1 greater the Paginator's default 15 rows
 		$arrayList = new ArrayList();
 		for ($i = 1; $i <= 16; $i++) {
-			$dataobject = new DataObject( 
+			$dataobject = new DataObject(
 				array ( 'ID' => $i )
 			);
 			$arrayList->add($dataobject);
 		}
 		$this->gridField->setList($arrayList);
-		
+
 		$this->assertEquals(
-			"\"ID\"\n\"1\"\n\"2\"\n\"3\"\n\"4\"\n\"5\"\n\"6\"\n\"7\"\n\"8\"\n"
-			."\"9\"\n\"10\"\n\"11\"\n\"12\"\n\"13\"\n\"14\"\n\"15\"\n\"16\"\n",
+			"ID\n".
+			"1\n".
+			"2\n".
+			"3\n".
+			"4\n".
+			"5\n".
+			"6\n".
+			"7\n".
+			"8\n".
+			"9\n".
+			"10\n".
+			"11\n".
+			"12\n".
+			"13\n".
+			"14\n".
+			"15\n".
+			"16\n",
+			$button->generateExportFileData($this->gridField)
+		);
+	}
+
+	public function testZeroValue() {
+		$button = new GridFieldExportButton();
+		$button->setExportColumns(array(
+			'RugbyTeamNumber' => 'Rugby Team Number'
+		));
+
+		$this->assertEquals(
+			"\"Rugby Team Number\"\n2\n0\n",
 			$button->generateExportFileData($this->gridField)
 		);
 	}
@@ -125,7 +175,8 @@ class GridFieldExportButtonTest_Team extends DataObject implements TestOnly {
 
 	private static $db = array(
 		'Name' => 'Varchar',
-		'City' => 'Varchar'
+		'City' => 'Varchar',
+		'RugbyTeamNumber' => 'Int'
 	);
 
 	public function canView($member = null) {
@@ -142,7 +193,8 @@ class GridFieldExportButtonTest_NoView extends DataObject implements TestOnly {
 
 	private static $db = array(
 		'Name' => 'Varchar',
-		'City' => 'Varchar'
+		'City' => 'Varchar',
+		'RugbyTeamNumber' => 'Int'
 	);
 
 	public function canView($member = null) {

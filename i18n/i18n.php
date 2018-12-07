@@ -62,7 +62,7 @@ require_once 'i18nSSLegacyAdapter.php';
  * @package framework
  * @subpackage misc
  */
-class i18n extends Object implements TemplateGlobalProvider, Flushable {
+class i18n extends SS_Object implements TemplateGlobalProvider, Flushable {
 
 	/**
 	 * This static variable is used to store the current defined locale.
@@ -118,10 +118,18 @@ class i18n extends Object implements TemplateGlobalProvider, Flushable {
 
 	/**
 	 * Return an instance of the cache used for i18n data.
-	 * @return Zend_Cache
+	 * @return Zend_Cache_Core
 	 */
 	public static function get_cache() {
-		return SS_Cache::factory('i18n', 'Output', array('lifetime' => null, 'automatic_serialization' => true));
+		return SS_Cache::factory(
+		    'i18n',
+            'Output',
+            array(
+                'lifetime' => null,
+                'automatic_serialization' => true,
+                'disable-segmentation' => true,
+            )
+        );
 	}
 
 	/**
@@ -1100,6 +1108,10 @@ class i18n extends Object implements TemplateGlobalProvider, Flushable {
 			'name' => 'Dutch',
 			'native' => 'Nederlands'
 		),
+		'nl_BE' => array(
+			'name' => 'Dutch (Belgium)',
+			'native' => 'Nederlands (Belgi&euml;)'
+		),
 		'en_NZ' => array(
 			'name' => 'English (NZ)',
 			'native' => 'English (NZ)'
@@ -1131,6 +1143,10 @@ class i18n extends Object implements TemplateGlobalProvider, Flushable {
 		'fr_FR' => array(
 			'name' => 'French',
 			'native' => 'fran&ccedil;ais'
+		),
+		'fr_BE' => array(
+			'name' => 'French (Belgium)',
+			'native' => 'Fran&ccedil;ais (Belgique)'
 		),
 		'gd_GB' => array(
 			'name' => 'Gaelic',
@@ -2019,13 +2035,14 @@ class i18n extends Object implements TemplateGlobalProvider, Flushable {
 	 *                       reusing a string which has already been "declared" (using another call to this function,
 	 *                       with the same class and entity), you can omit it.
 	 * @param string $context (optional) If the string can be difficult to translate by any reason, you can help
-	 *                        translators with some more info using this param
-	 * @param string injectionArray (optional) array of key value pairs that are used to replace corresponding
-	 *                              expressions in {curly brackets} in the $string. The injection array can also be
-	 *                              used as the their argument to the _t() function
+	 *                       translators with some more info using this param
+	 * @param array $injection (optional) array of key value pairs that are used to replace corresponding
+	 *                       expressions in {curly brackets} in the $string. The injection array can also be
+	 *                       used as the their argument to the _t() function. The injection array can be the second,
+	 *                       third or fourth parameter. The function will use the first parameter that is an array
 	 * @return string The translated string, according to the currently set locale {@link i18n::set_locale()}
 	 */
-	public static function _t($entity, $string = "", $context = "", $injection = "") {
+	public static function _t($entity, $string = "", $context = "", $injection = array()) {
 		if(is_numeric($context) && in_array($context, array(PR_LOW, PR_MEDIUM, PR_HIGH))) {
 			Deprecation::notice(
 				'3.0',
@@ -2142,7 +2159,7 @@ class i18n extends Object implements TemplateGlobalProvider, Flushable {
 			self::$translators[$defaultPriority] = array(
 				'core' => new Zend_Translate(array(
 					'adapter' => 'i18nRailsYamlAdapter',
-					'locale' => self::$default_locale,
+					'locale' => Config::inst()->get('i18n', 'default_locale'),
 					'disableNotices' => true,
 				))
 			);
@@ -2367,7 +2384,7 @@ class i18n extends Object implements TemplateGlobalProvider, Flushable {
 				is_dir($moduleDir)
 				&& is_file($moduleDir . DIRECTORY_SEPARATOR . "_config.php")
 				&& is_file($moduleDir . DIRECTORY_SEPARATOR . "lang" . DIRECTORY_SEPARATOR
-					. self::$default_locale . ".php")
+					. Config::inst()->get('i18n', 'default_locale') . ".php")
 			) {
 				$translatableModules[] = $module;
 			}
@@ -2485,7 +2502,7 @@ class i18n extends Object implements TemplateGlobalProvider, Flushable {
 	 * @return string Current locale in the system
 	 */
 	public static function get_locale() {
-		return (!empty(self::$current_locale)) ? self::$current_locale : self::$default_locale;
+		return (!empty(self::$current_locale)) ? self::$current_locale : Config::inst()->get('i18n', 'default_locale');
 	}
 
 	/**
@@ -2498,20 +2515,23 @@ class i18n extends Object implements TemplateGlobalProvider, Flushable {
 	 * For example, {@link Requirements::add_i18n_javascript()} and {@link i18n::include_by_class()}
 	 * use this "fallback locale" value to include fallback language files.
 	 *
+	 * @deprecated since version 4.0; Use the "i18n.default_locale" config setting instead
 	 * @return String
 	 */
 	public static function default_locale() {
-		return self::$default_locale;
+		Deprecation::notice('4.0', 'Use the "i18n.default_locale" config setting instead');
+		return Config::inst()->get('i18n', 'default_locale');
 	}
 
 	/**
 	 * See {@link default_locale()} for usage.
 	 *
-	 *
+	 * @deprecated since version 4.0; Use the "i18n.default_locale" config setting instead
 	 * @param String $locale
 	 */
 	public static function set_default_locale($locale) {
-		self::$default_locale = $locale;
+		Deprecation::notice('4.0', 'Use the "i18n.default_locale" config setting instead');
+		Config::inst()->update('i18n', 'default_locale', $locale);
 	}
 
 	/**

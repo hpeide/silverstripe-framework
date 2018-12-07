@@ -5,11 +5,13 @@ class HierarchyTest extends SapphireTest {
 	protected static $fixture_file = 'HierarchyTest.yml';
 
 	protected $requiredExtensions = array(
-		'HierarchyTest_Object' => array('Hierarchy', 'Versioned')
+		'HierarchyTest_Object' => array('Hierarchy', 'Versioned'),
+		'HierarchyHideTest_Object' => array('Hierarchy', 'Versioned'),
 	);
 
 	protected $extraDataObjects = array(
-		'HierarchyTest_Object'
+		'HierarchyTest_Object',
+		'HierarchyHideTest_Object'
 	);
 
 	/**
@@ -59,12 +61,12 @@ class HierarchyTest extends SapphireTest {
 		// Obj 3 has been deleted; let's bring it back from the grave
 		$obj3 = Versioned::get_including_deleted("HierarchyTest_Object", "\"Title\" = 'Obj 3'")->First();
 
-		// Check that both obj 3 children are returned
-		$this->assertEquals(array("Obj 3a", "Obj 3b", "Obj 3c"),
+		// Check that all obj 3 children are returned
+		$this->assertEquals(array("Obj 3a", "Obj 3b", "Obj 3c", "Obj 3d"),
 			$obj3->AllHistoricalChildren()->column('Title'));
 
 		// Check numHistoricalChildren
-		$this->assertEquals(3, $obj3->numHistoricalChildren());
+		$this->assertEquals(4, $obj3->numHistoricalChildren());
 
 	}
 
@@ -94,11 +96,11 @@ class HierarchyTest extends SapphireTest {
 	public function testNumChildren() {
 		$this->assertEquals($this->objFromFixture('HierarchyTest_Object', 'obj1')->numChildren(), 0);
 		$this->assertEquals($this->objFromFixture('HierarchyTest_Object', 'obj2')->numChildren(), 2);
-		$this->assertEquals($this->objFromFixture('HierarchyTest_Object', 'obj3')->numChildren(), 3);
+		$this->assertEquals($this->objFromFixture('HierarchyTest_Object', 'obj3')->numChildren(), 4);
 		$this->assertEquals($this->objFromFixture('HierarchyTest_Object', 'obj2a')->numChildren(), 2);
 		$this->assertEquals($this->objFromFixture('HierarchyTest_Object', 'obj2b')->numChildren(), 0);
 		$this->assertEquals($this->objFromFixture('HierarchyTest_Object', 'obj3a')->numChildren(), 2);
-		$this->assertEquals($this->objFromFixture('HierarchyTest_Object', 'obj3b')->numChildren(), 0);
+		$this->assertEquals($this->objFromFixture('HierarchyTest_Object', 'obj3d')->numChildren(), 0);
 
 		$obj1 = $this->objFromFixture('HierarchyTest_Object', 'obj1');
 		$this->assertEquals($obj1->numChildren(), 0);
@@ -178,6 +180,53 @@ class HierarchyTest extends SapphireTest {
 		$this->assertEquals('Obj 1', $obj1->getBreadcrumbs());
 		$this->assertEquals('Obj 2 &raquo; Obj 2a', $obj2a->getBreadcrumbs());
 		$this->assertEquals('Obj 2 &raquo; Obj 2a &raquo; Obj 2aa', $obj2aa->getBreadcrumbs());
+	}
+
+	/**
+	 * @covers Hierarchy::markChildren()
+	 */
+	public function testMarkChildrenDoesntUnmarkPreviouslyMarked() {
+		$obj3 = $this->objFromFixture('HierarchyTest_Object', 'obj3');
+		$obj3aa = $this->objFromFixture('HierarchyTest_Object', 'obj3aa');
+		$obj3ba = $this->objFromFixture('HierarchyTest_Object', 'obj3ba');
+		$obj3ca = $this->objFromFixture('HierarchyTest_Object', 'obj3ca');
+
+		$obj3->markPartialTree();
+		$obj3->markToExpose($obj3aa);
+		$obj3->markToExpose($obj3ba);
+		$obj3->markToExpose($obj3ca);
+
+		$expected = <<<EOT
+<ul>
+<li>Obj 3a
+<ul>
+<li>Obj 3aa
+</li>
+<li>Obj 3ab
+</li>
+</ul>
+</li>
+<li>Obj 3b
+<ul>
+<li>Obj 3ba
+</li>
+<li>Obj 3bb
+</li>
+</ul>
+</li>
+<li>Obj 3c
+<ul>
+<li>Obj 3c
+</li>
+</ul>
+</li>
+<li>Obj 3d
+</li>
+</ul>
+
+EOT;
+
+		$this->assertSame($expected, $obj3->getChildrenAsUL());
 	}
 
 	public function testGetChildrenAsUL() {
@@ -482,6 +531,35 @@ class HierarchyTest extends SapphireTest {
 		$this->assertEquals('unexpanded jstree-closed closed', $nodeClass, 'obj2 should have children in the sitetree');
 	}
 
+	public function testNoHideFromHeirarchy() {
+		$obj4 = $this->objFromFixture('HierarchyHideTest_Object', 'obj4');
+		$obj4->publish("Stage", "Live");
+
+		foreach($obj4->stageChildren() as $child) {
+			$child->publish("Stage", "Live");
+		}
+		$this->assertEquals($obj4->stageChildren()->Count(), 2);
+		$this->assertEquals($obj4->liveChildren()->Count(), 2);
+	}
+
+	public function testHideFromHeirarchy() {
+		HierarchyHideTest_Object::config()->hide_from_hierarchy = array('HierarchyHideTest_SubObject');
+		$obj4 = $this->objFromFixture('HierarchyHideTest_Object', 'obj4');
+		$obj4->publish("Stage", "Live");
+
+		// load without using stage children otherwise it'll bbe filtered before it's publish
+		// we need to publish all of them, and expect liveChildren to return some.
+		$children = HierarchyHideTest_Object::get()
+			->filter('ParentID', (int)$obj4->ID)
+			->exclude('ID', (int)$obj4->ID);
+
+		foreach($children as $child) {
+			$child->publish("Stage", "Live");
+		}
+		$this->assertEquals($obj4->stageChildren()->Count(), 1);
+		$this->assertEquals($obj4->liveChildren()->Count(), 1);
+	}
+
 	/**
 	 * @param String $html  [description]
 	 * @param array $nodes Breadcrumb path as array
@@ -539,7 +617,28 @@ class HierarchyTest_Object extends DataObject implements TestOnly {
 		"Versioned('Stage', 'Live')",
 	);
 
+	private static $default_sort = 'Title ASC';
+
 	public function cmstreeclasses() {
 		return $this->markingClasses();
 	}
+}
+
+class HierarchyHideTest_Object extends DataObject implements TestOnly {
+	private static $db = array(
+		'Title' => 'Varchar'
+	);
+
+	private static $extensions = array(
+		'Hierarchy',
+		"Versioned('Stage', 'Live')",
+	);
+
+	public function cmstreeclasses() {
+		return $this->markingClasses();
+	}
+}
+
+class HierarchyHideTest_SubObject extends HierarchyHideTest_Object {
+
 }

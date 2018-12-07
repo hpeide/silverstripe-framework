@@ -16,8 +16,10 @@ class SS_Backtrace {
 		'mysql_connect',
 		'mssql_connect',
 		'pg_connect',
+		array('PDO', '__construct'),
 		array('mysqli', 'mysqli'),
 		array('mysqli', 'select_db'),
+		array('mysqli', 'real_connect'),
 		array('DB', 'connect'),
 		array('Security', 'check_default_admin'),
 		array('Security', 'encrypt_password'),
@@ -130,7 +132,7 @@ class SS_Backtrace {
 	 * Return the full function name.  If showArgs is set to true, a string representation of the arguments will be
 	 * shown
 	 *
-	 * @param Object $item
+	 * @param SS_Object $item
 	 * @param boolean $showArg
 	 * @param Int $argCharLimit
 	 * @return String

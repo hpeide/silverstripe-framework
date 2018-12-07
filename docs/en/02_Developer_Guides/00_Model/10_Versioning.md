@@ -10,7 +10,7 @@ It is most commonly applied to pages in the CMS (the `SiteTree` class). Draft co
 from published content shown to your website visitors. 
 
 Versioning in SilverStripe is handled through the [api:Versioned] class. As a [api:DataExtension] it is possible to 
-be applied to any `[api:DataObject]` subclass. The extension class will automatically update read and write operations
+be applied to any [api:DataObject] subclass. The extension class will automatically update read and write operations
 done via the ORM via the `augmentSQL` database hook.
 
 Adding Versioned to your `DataObject` subclass works the same as any other extension. It accepts two or more arguments 
@@ -25,6 +25,11 @@ denoting the different "stages", which map to different database tables.
 <div class="notice" markdown="1">
 The extension is automatically applied to `SiteTree` class. For more information on extensions see 
 [Extending](../extending) and the [Configuration](../configuration) documentation.
+</div>
+
+<div class="warning" markdown="1">
+Versioning only works if you are adding the extension to the base class. That is, the first subclass
+of `DataObject`. Adding this extension to children of the base class will have unpredictable behaviour.
 </div>
 
 ## Database Structure
@@ -77,7 +82,7 @@ The record is retrieved as a `DataObject`, but saving back modifications via `wr
 rather than modifying the existing one.
 </div>
 
-In order to get a list of all versions for a specific record, we need to generate specialized `[api:Versioned_Version]` 
+In order to get a list of all versions for a specific record, we need to generate specialized [api:Versioned_Version] 
 objects, which expose the same database information as a `DataObject`, but also include information about when and how 
 a record was published.
 	
@@ -90,9 +95,9 @@ a record was published.
 
 The usual call to `DataObject->write()` will write to whatever stage is currently active, as defined by the 
 `Versioned::current_stage()` global setting. Each call will automatically create a new version in the 
-`<class>_versions` table. To avoid this, use `[writeWithoutVersion()](api:Versioned->writeWithoutVersion())` instead.
+`<class>_versions` table. To avoid this, use [api:Versioned::writeWithoutVersion()] instead.
 
-To move a saved version from one stage to another, call `[writeToStage(<stage>)](api:Versioned->writeToStage())` on the 
+To move a saved version from one stage to another, call [writeToStage(<stage>)](api:Versioned->writeToStage()) on the 
 object. The process of moving a version to a different stage is also called "publishing", so we've created a shortcut 
 for this: `publish(<from-stage>, <to-stage>)`.
 
@@ -127,7 +132,7 @@ is initialized. But it can also be set and reset temporarily to force a specific
 ### Custom SQL
 
 We generally discourage writing `Versioned` queries from scratch, due to the complexities involved through joining 
-multiple tables across an inherited table scheme (see `[api:Versioned->augmentSQL()]`). If possible, try to stick to 
+multiple tables across an inherited table scheme (see [api:Versioned::augmentSQL()]). If possible, try to stick to 
 smaller modifications of the generated `DataList` objects.
 
 Example: Get the first 10 live records, filtered by creation date:
@@ -137,8 +142,76 @@ Example: Get the first 10 live records, filtered by creation date:
 
 ### Permissions
 
-The `Versioned` extension doesn't provide any permissions on its own, but you can have a look at the `SiteTree` class 
-for implementation samples, specifically `canPublish()` and `canDeleteFromStage()`.
+By default, `Versioned` will come out of the box with security extensions which restrict
+the visibility of objects in Draft (stage) or Archive viewing mode.
+
+<div class="alert" markdown="1">
+As is standard practice, user code should always invoke `canView()` on any object before
+rendering it. DataLists do not filter on `canView()` automatically, so this must be
+done via user code. This be be achieved either by wrapping `<% if $canView %>` in
+your template, or by implementing your visibility check in PHP.
+</div>
+
+Versioned object visibility can be customised in one of the following ways by editing your user code:
+
+ * Override the `canViewVersioned` method in your code. Make sure that this returns true or
+   false if the user is not allowed to view this object in the current viewing mode.
+ * Override the `canView` method to override the method visibility completely.
+ 
+E.g.
+
+    :::php
+    class MyObject extends DataObject {
+        private static $extensions = array(
+            'Versioned'
+        );
+        
+        public function canViewVersioned($member = null) {
+            // Check if site is live
+            $mode = $this->getSourceQueryParam("Versioned.mode");
+            $stage = $this->getSourceQueryParam("Versioned.stage");
+            if ($mode === 'Stage' && $stage === 'Live') {
+                return true;
+            }
+            
+            // Only admins can view non-live objects
+            return Permission::checkMember($member, 'ADMIN');
+        }
+    }
+
+If you want to control permissions of an object in an extension, you can also use
+one of the below extension points in your `DataExtension` subclass:
+
+ * `canView` to update the visibility of the object's `canView`
+ * `canViewNonLive` to update the visibility of this object only in non-live mode.
+
+Note that unlike canViewVersioned, the canViewNonLive method will 
+only be invoked if the object is in a non-published state.
+ 
+E.g.
+
+    :::php
+    class MyObjectExtension extends DataExtension {
+        public function canViewNonLive($member = null) {
+            return Permission::check($member, 'DRAFT_STATUS');
+        }
+    }
+
+If none of the above checks are overridden, visibility will be determined by the 
+permissions in the `TargetObject.non_live_permissions` config.
+
+E.g.
+
+    :::php
+    class MyObject extends DataObject {
+        private static $extensions = array(
+            'Versioned'
+        );
+        private static $non_live_permissions = array('ADMIN');
+    }
+
+Versioned applies no additional permissions to `canEdit` or `canCreate`, and such
+these permissions should be implemented as per standard unversioned DataObjects.
 
 ### Page Specific Operations
 

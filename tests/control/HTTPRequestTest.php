@@ -253,5 +253,30 @@ class HTTPRequestTest extends SapphireTest {
 		$req = new SS_HTTPRequest('GET', '/home?test=1');
 		$this->assertEquals('home?test=1', $req->getURL(true));
 		$this->assertEquals('home', $req->getURL());
+
+		$req = new SS_HTTPRequest('GET', 'somefile.gif');
+		$this->assertEquals('gif', $req->getExtension());
+
+		$req = new SS_HTTPRequest('GET', '.passwd');
+		$this->assertEquals(null, $req->getExtension());
+	}
+
+	public function testGetIPFromHeaderValue() {
+		$req = new SS_HTTPRequest('GET', '/');
+		$reflectionMethod = new ReflectionMethod($req, 'getIPFromHeaderValue');
+		$reflectionMethod->setAccessible(true);
+
+		$headers = array(
+			'80.79.208.21, 149.126.76.1, 10.51.0.68' => '80.79.208.21',
+			'52.19.19.103, 10.51.0.49' => '52.19.19.103',
+			'10.51.0.49, 52.19.19.103' => '52.19.19.103',
+			'10.51.0.49' => '10.51.0.49',
+			'127.0.0.1, 10.51.0.49' => '127.0.0.1',
+		);
+
+		foreach ($headers as $header => $ip) {
+			$this->assertEquals($ip, $reflectionMethod->invoke($req, $header));
+		}
+
 	}
 }

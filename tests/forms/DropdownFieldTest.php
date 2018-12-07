@@ -6,12 +6,37 @@
 class DropdownFieldTest extends SapphireTest {
 
 	public function testGetSource() {
-		$source = array(1=>'one');
+		$source = array(1=>'one', 2 => 'two');
 		$field = new DropdownField('Field', null, $source);
 		$this->assertEquals(
-			$field->getSource(),
+			$source,
+			$field->getSource()
+		);
+		$this->assertEquals(
+			$source,
+			$field->getSourceAsArray()
+		);
+
+		$items = new ArrayList(array(
+			array( 'ID' => 1, 'Title' => 'ichi', 'OtherField' => 'notone' ),
+			array( 'ID' => 2, 'Title' => 'ni', 'OtherField' => 'nottwo' ),
+		));
+		$field->setSource($items);
+		$this->assertEquals(
+			$field->getSourceAsArray(),
 			array(
-				1 => 'one'
+				1 => 'ichi',
+				2 => 'ni',
+			)
+		);
+
+		$map = new SS_Map($items, 'ID', 'OtherField');
+		$field->setSource($map);
+		$this->assertEquals(
+			$field->getSourceAsArray(),
+			array(
+				1 => 'notone',
+				2 => 'nottwo',
 			)
 		);
 	}
@@ -221,6 +246,32 @@ class DropdownFieldTest extends SapphireTest {
 		/* There are no disabled options anymore */
 		$disabledOptions = $this->findDisabledOptionElements($field->Field());
 		$this->assertEquals(count($disabledOptions), 0, 'There are no disabled options');
+	}
+
+	/**
+	 * The Field() method should be able to handle arrays as values in an edge case. If it couldn't handle it then
+	 * this test would trigger an array to string conversion PHP notice
+	 *
+	 * @dataProvider arrayValueProvider
+	 */
+	public function testDropdownWithArrayValues($value) {
+		$field = $this->createDropdownField();
+		$field->setValue($value);
+		$this->assertInstanceOf('HTMLText', $field->Field());
+        $this->assertSame($value, $field->Value());
+	}
+
+	/**
+	 * @return array
+	 */
+	public function arrayValueProvider() {
+		return array(
+			array(array()),
+			array(array(0)),
+			array(array(123)),
+			array(array('string')),
+			array('Regression-ish test.')
+		);
 	}
 
 	/**

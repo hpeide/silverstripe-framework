@@ -5,6 +5,24 @@
  */
 class HTMLTextTest extends SapphireTest {
 
+	private $previousLocaleSetting = null;
+
+	public function setUp()
+	{
+		parent::setUp();
+		// clear the previous locale setting
+		$this->previousLocaleSetting = null;
+	}
+
+	public function tearDown()
+	{
+		parent::tearDown();
+		// If a test sets the locale, reset it on teardown
+		if ($this->previousLocaleSetting) {
+			setlocale(LC_CTYPE, $this->previousLocaleSetting);
+		}
+	}
+
 	/**
 	 * Test {@link HTMLText->LimitCharacters()}
 	 */
@@ -191,5 +209,154 @@ class HTMLTextTest extends SapphireTest {
 			$textObj->whitelistContent('<meta content="Keep"><p>Remove</p><link href="Also Keep" />Keep Text'),
 			'Removes any elements not in whitelist including text elements'
 		);
+	}
+
+	public function testShortCodeParsedInRAW() {
+		$parser = ShortcodeParser::get('HTMLTextTest');
+		$parser->register('shortcode', function($arguments, $content, $parser, $tagName, $extra) {
+			return 'replaced';
+		});
+		ShortcodeParser::set_active('HTMLTextTest');
+		/** @var HTMLText $field */
+		$field = DBField::create_field('HTMLText', '<p>[shortcode]</p>');
+		$this->assertEquals('<p>replaced</p>', $field->RAW());
+		$this->assertEquals('<p>replaced</p>', (string)$field);
+
+		$field->setOptions(array(
+			'shortcodes' => false,
+		));
+
+		$this->assertEquals('<p>[shortcode]</p>', $field->RAW());
+		$this->assertEquals('<p>[shortcode]</p>', (string)$field);
+
+
+		ShortcodeParser::set_active('default');
+	}
+
+	public function testShortCodeParsedInTemplateHelpers() {
+		$parser = ShortcodeParser::get('HTMLTextTest');
+		$parser->register('shortcode', function($arguments, $content, $parser, $tagName, $extra) {
+			return 'Replaced short code with this. <a href="home">home</a>';
+		});
+		ShortcodeParser::set_active('HTMLTextTest');
+		/** @var HTMLText $field */
+		$field = DBField::create_field('HTMLText', '<p>[shortcode]</p>');
+
+		$this->assertEquals(
+			'&lt;p&gt;Replaced short code with this. &lt;a href=&quot;home&quot;&gt;home&lt;/a&gt;&lt;/p&gt;',
+			$field->HTMLATT()
+		);
+		$this->assertEquals(
+			'%3Cp%3EReplaced+short+code+with+this.+%3Ca+href%3D%22home%22%3Ehome%3C%2Fa%3E%3C%2Fp%3E',
+			$field->URLATT()
+		);
+		$this->assertEquals(
+			'%3Cp%3EReplaced%20short%20code%20with%20this.%20%3Ca%20href%3D%22home%22%3Ehome%3C%2Fa%3E%3C%2Fp%3E',
+			$field->RAWURLATT()
+		);
+		$this->assertEquals(
+			'&lt;p&gt;Replaced short code with this. &lt;a href=&quot;home&quot;&gt;home&lt;/a&gt;&lt;/p&gt;',
+			$field->ATT()
+		);
+		$this->assertEquals(
+			'<p>Replaced short code with this. <a href="home">home</a></p>',
+			$field->RAW()
+		);
+		$this->assertEquals(
+			'\x3cp\x3eReplaced short code with this. \x3ca href=\"home\"\x3ehome\x3c/a\x3e\x3c/p\x3e',
+			$field->JS()
+		);
+		$this->assertEquals(
+			'&lt;p&gt;Replaced short code with this. &lt;a href=&quot;home&quot;&gt;home&lt;/a&gt;&lt;/p&gt;',
+			$field->HTML()
+		);
+		$this->assertEquals(
+			'&lt;p&gt;Replaced short code with this. &lt;a href=&quot;home&quot;&gt;home&lt;/a&gt;&lt;/p&gt;',
+			$field->XML()
+		);
+		$this->assertEquals(
+			'Repl...',
+			$field->LimitCharacters(4, '...')
+		);
+		$this->assertEquals(
+			'Replaced...',
+			$field->LimitCharactersToClosestWord(10, '...')
+		);
+		$this->assertEquals(
+			'Replaced...',
+			$field->LimitWordCount(1, '...')
+		);
+		$this->assertEquals(
+			'<p>replaced short code with this. <a href="home">home</a></p>',
+			$field->LowerCase()
+		);
+		$this->assertEquals(
+			'<P>REPLACED SHORT CODE WITH THIS. <A HREF="HOME">HOME</A></P>',
+			$field->UpperCase()
+		);
+		$this->assertEquals(
+			'Replaced short code with this. home',
+			$field->NoHTML()
+		);
+		Config::nest();
+		Config::inst()->update('Director', 'alternate_base_url', 'http://example.com/');
+		$this->assertEquals(
+			'<p>Replaced short code with this. <a href="http://example.com/home">home</a></p>',
+			$field->AbsoluteLinks()
+		);
+		Config::unnest();
+		$this->assertEquals(
+			'Replaced short code with this.',
+			$field->LimitSentences(1)
+		);
+		$this->assertEquals(
+			'Replaced short code with this.',
+			$field->FirstSentence()
+		);
+		$this->assertEquals(
+			'Replaced short...',
+			$field->Summary(2)
+		);
+		$this->assertEquals(
+			'Replaced short code with...',
+			$field->BigSummary(4)
+		);
+		$this->assertEquals(
+			'Replaced short code with this. home[home]',
+			$field->FirstParagraph()
+		);
+		$this->assertEquals(
+			'Replaced <span class="highlight">short</span> <span class="highlight">code</span> with this. home',
+			$field->ContextSummary(500, 'short code')
+		);
+
+		ShortcodeParser::set_active('default');
+	}
+
+	public function testValidUtf8()
+	{
+		// Install a UTF-8 locale
+		$this->previousLocaleSetting = setlocale(LC_CTYPE, 0);
+		$locales = array('en_US.UTF-8', 'en_NZ.UTF-8', 'de_DE.UTF-8');
+		$localeInstalled = false;
+		foreach ($locales as $locale) {
+			if ($localeInstalled = setlocale(LC_CTYPE, $locale)) {
+				break;
+			}
+		}
+
+		// If the system doesn't have any of the UTF-8 locales, exit early
+		if ($localeInstalled === false) {
+			$this->markTestIncomplete('Unable to run this test because of missing locale!');
+			return;
+		}
+
+		$problematicText = html_entity_decode('<p>This is a&nbsp;Test with non-breaking&nbsp;space!</p>', ENT_COMPAT, 'UTF-8');
+
+		$textObj = new HTMLText('Test');
+		$textObj->setValue($problematicText);
+
+		$this->assertTrue(mb_check_encoding($textObj->FirstSentence(), 'UTF-8'));
+		$this->assertTrue(mb_check_encoding($textObj->Summary(), 'UTF-8'));
 	}
 }

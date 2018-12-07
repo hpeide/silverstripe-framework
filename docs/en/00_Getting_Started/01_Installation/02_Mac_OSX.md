@@ -7,7 +7,7 @@ It is also a bit harder to install additional PHP modules required by SilverStri
 [MAMP](http://www.mamp.info/en/) is a simple way to get a complete webserver
 environment going on your OSX machine, without removing or altering any system-level configuration.
 
-Check out the [MAC OSX with Homebrew](other_installation_options/Mac_OSX_Homebrew)
+Check out the [MAC OSX with Homebrew](/getting_started/installation/other_installation_options/mac_osx_homebrew)
 for an alternative, more configurable installation process.
 
 ## Requirements
@@ -30,8 +30,8 @@ to automatically download the required files from GitHub and other repositories.
 
 In order to install Composer, we need to let the system know where to find the PHP executable.
 Open or create the `~/.bash_profile` file in your home folder, then add the following line:
-`export PATH=/Applications/MAMP/bin/php/php5.5.22/bin:$PATH`
-You'll need to adjust the PHP version number (`php5.5.22`). The currently running PHP version is shown on `http://localhost:8888/MAMP/index.php?page=phpinfo`.
+`export PATH=/Applications/MAMP/bin/php/php7.0.20/bin:$PATH`
+You'll need to adjust the PHP version number (`php7.0.20`). The currently running PHP version is shown on `http://localhost:8888/MAMP/index.php?page=phpinfo`.
 Run `source ~/.bash_profile` for the changes to take effect. You can verify that the correct executable
 is used by running `which php`. It should show the path to MAMP from above.
 
@@ -46,4 +46,4 @@ Finally, we're ready to install SilverStripe through composer:
 After finishing, the installation wizard should be available at `http://localhost:8888/silverstripe`.
 The MAMP default database credentials are user `root` and password `root`.
 
-We have a separate in-depth tutorial for [Composer Installation and Usage](composer).
+We have a separate in-depth tutorial for [Composer Installation and Usage](/getting_started/composer).

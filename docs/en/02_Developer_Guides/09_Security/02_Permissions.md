@@ -19,7 +19,7 @@ The simple usage, Permission::check("PERM_CODE") will detect if the currently lo
 
 ## PermissionProvider
 
-`[api:PermissionProvider]` is an interface which lets you define a method *providePermissions()*.
+[api:PermissionProvider] is an interface which lets you define a method *providePermissions()*.
 This method should return a map of permission code names with a human readable explanation of its purpose.
 
 	:::php
@@ -63,7 +63,7 @@ Making this work well is a subtle business and should be discussed with a few de
 
 *  On an individual data record, $page->can("View", $member = null) and be called.  If a member isn't passed, the
 currently logged in member is assumed.
-*  On a request, $request->hasPermission("View", $member = null) can be called.  See [datamodel](/topics/datamodel) for
+*  On a request, $request->hasPermission("View", $member = null) can be called.  See [datamodel](/developer_guides/model/permissions) for
 information on request objects.
 
 ## Special cases
@@ -98,4 +98,4 @@ Internally, this checks that the user has any of the defined `CMS_ACCESS_*` perm
 
 
 ## API Documentation
-`[api:Permission]`
+[api:Permission]

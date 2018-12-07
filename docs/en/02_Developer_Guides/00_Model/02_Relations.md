@@ -59,6 +59,48 @@ The relationship can also be navigated in [templates](../templates).
 		<% end_if %>
 	<% end_with %>
 
+## Polymorphic has_one
+
+A has_one can also be polymorphic, which allows any type of object to be associated.
+This is useful where there could be many use cases for a particular data structure.
+
+An additional column is created called "`<relationship-name>`Class", which along
+with the ID column identifies the object.
+
+To specify that a has_one relation is polymorphic set the type to 'DataObject'.
+Ideally, the associated has_many (or belongs_to) should be specified with dot notation.
+
+	::php
+
+	class Player extends DataObject {
+		private static $has_many = array(
+			"Fans" => "Fan.FanOf"
+		);
+	}
+
+	class Team extends DataObject {
+		private static $has_many = array(
+			"Fans" => "Fan.FanOf"
+		);
+	}
+
+	// Type of object returned by $fan->FanOf() will vary
+	class Fan extends DataObject {
+
+		// Generates columns FanOfID and FanOfClass
+		private static $has_one = array(
+			"FanOf" => "DataObject"
+		);
+	}
+
+<div class="warning" markdown='1'>
+Note: The use of polymorphic relationships can affect query performance, especially
+on joins, and also increases the complexity of the database and necessary user code.
+They should be used sparingly, and only where additional complexity would otherwise
+be necessary. E.g. Additional parent classes for each respective relationship, or
+duplication of code.
+</div>
+
 ## has_many
 
 Defines 1-to-many joins. As you can see from the previous example, `$has_many` goes hand in hand with `$has_one`.
@@ -105,7 +147,7 @@ you will get an instance of [api:HasManyList] rather than the object.
 		echo $player->FirstName;
 	}
 
-To specify multiple $has_manys to the same object you can use dot notation to distinguish them like below:
+To specify multiple `$has_many` to the same object you can use dot notation to distinguish them like below:
 
 	:::php
 	<?php
@@ -130,15 +172,25 @@ To specify multiple $has_manys to the same object you can use dot notation to di
 Multiple `$has_one` relationships are okay if they aren't linking to the same object type. Otherwise, they have to be
 named.
 
+If you're using the default scaffolded form fields with multiple `has_one` relationships, you will end up with a CMS field for each relation. If you don't want these you can remove them by their IDs:
+
+    :::php
+    public function getCMSFields()
+    {
+        $fields = parent::getCMSFields();
+        $fields->removeByName(array('ManagerID', 'CleanerID'));
+        return $fields;
+    }
+
 
 ## belongs_to
 
 Defines a 1-to-1 relationship with another object, which declares the other end of the relationship with a 
-corresponding $has_one. A single database column named `<relationship-name>ID` will be created in the object with the 
+corresponding `$has_one`. A single database column named `<relationship-name>ID` will be created in the object with the 
 `$has_one`, but the $belongs_to by itself will not create a database field. This field will hold the ID of the object 
 declaring the `$belongs_to`.
 
-Similarly with $has_many, dot notation can be used to explicitly specify the `$has_one` which refers to this relation. 
+Similarly with `$has_many`, dot notation can be used to explicitly specify the `$has_one` which refers to this relation. 
 This is not mandatory unless the relationship would be otherwise ambiguous.
 
 	:::php
@@ -253,7 +305,7 @@ and `remove()` method.
 You can use the ORM to get a filtered result list without writing any SQL. For example, this snippet gets you the 
 "Players"-relation on a team, but only containing active players.
 
-See `[api:DataObject::$has_many]` for more info on the described relations.
+See [api:DataObject::$has_many] for more info on the described relations.
 
 	:::php
 	<?php

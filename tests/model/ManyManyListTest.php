@@ -11,8 +11,16 @@ class ManyManyListTest extends SapphireTest {
 	protected $extraDataObjects = array(
 		'DataObjectTest_Team',
 		'DataObjectTest_SubTeam',
+		'DataObjectTest_Fan',
+		'DataObjectTest_Sortable',
+		'DataObjectTest_EquipmentCompany',
+		'DataObjectTest_SubEquipmentCompany',
 		'DataObjectTest_Player',
-		'ManyManyListTest_ExtraFields'
+		'DataObjectTest_Company',
+		'DataObjectTest_TeamComment',
+		'ManyManyListTest_ExtraFields',
+		'ManyManyListTest_Product',
+		'ManyManyListTest_Category',
 	);
 
 
@@ -35,6 +43,28 @@ class ManyManyListTest extends SapphireTest {
 		$this->assertEquals('Foo', $check->Reference, 'Basic scalar fields should exist');
 		$this->assertInstanceOf('Money', $check->Worth, 'Composite fields should exist on the record');
 		$this->assertEquals(100, $check->Worth->getAmount());
+	}
+
+	/**
+	 * This test targets a bug where appending many_many_extraFields to a query would
+	 * result in erroneous queries for sort orders that rely on _SortColumn0
+	 */
+	public function testAddCompositedExtraFieldsWithSortColumn0() {
+		$obj = new ManyManyListTest_ExtraFields();
+		$obj->write();
+
+		$product = new ManyManyListTest_Product();
+		$product->Title = 'Test Product';
+		$product->write();
+
+		// the actual test is that this does not generate an error in the sql.
+		$obj->Products()->add($product, array(
+			'Reference' => 'Foo'
+		));
+
+		$result = $obj->Products()->First();
+		$this->assertEquals('Foo', $result->Reference, 'Basic scalar fields should exist');
+		$this->assertEquals('Test Product', $result->Title);
 	}
 
 	public function testCreateList() {
@@ -265,6 +295,17 @@ class ManyManyListTest extends SapphireTest {
 		$this->assertSQLEquals($expected, $list->sql($parameters));
 	}
 
+	public function testFilteringOnPreviouslyJoinedTable() {
+
+		/** @var ManyManyListTest_Category $category */
+		$category = $this->objFromFixture('ManyManyListTest_Category', 'categorya');
+
+		/** @var ManyManyList $productsRelatedToProductB */
+		$productsRelatedToProductB = $category->Products()->filter('RelatedProducts.Title', 'Product B');
+
+		$this->assertEquals(1, $productsRelatedToProductB->count());
+	}
+
 
 }
 
@@ -275,7 +316,8 @@ class ManyManyListTest extends SapphireTest {
 class ManyManyListTest_ExtraFields extends DataObject implements TestOnly {
 
 	private static $many_many = array(
-		'Clients' => 'ManyManyListTest_ExtraFields'
+		'Clients' => 'ManyManyListTest_ExtraFields',
+		'Products' => 'ManyManyListTest_Product'
 	);
 
 	private static $belongs_many_many = array(
@@ -286,6 +328,41 @@ class ManyManyListTest_ExtraFields extends DataObject implements TestOnly {
 		'Clients' => array(
 			'Reference' => 'Varchar',
 			'Worth' => 'Money'
+		),
+		'Products' => array(
+			'Reference' => 'Varchar'
 		)
 	);
 }
+
+class ManyManyListTest_Product extends DataObject implements TestOnly {
+
+	private static $db = array(
+		'Title' => 'Varchar'
+	);
+
+	private static $many_many = array(
+		'RelatedProducts' => 'ManyManyListTest_Product'
+	);
+
+	private static $belongs_many_many = array(
+		'RelatedTo' => 'ManyManyListTest_Product',
+		'Categories' => 'ManyManyListTest_Category'
+	);
+
+	private static $default_sort = '"Title" IS NOT NULL ASC, "Title" ASC';
+
+}
+
+class ManyManyListTest_Category extends DataObject implements TestOnly {
+
+	private static $db = array(
+		'Title' => 'Varchar'
+	);
+
+	private static $many_many = array(
+		'Products' => 'ManyManyListTest_Product'
+	);
+
+}
+

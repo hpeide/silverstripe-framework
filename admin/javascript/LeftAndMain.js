@@ -73,7 +73,7 @@ jQuery.noConflict();
 		$(window).on("message", function(e) {
 			var target,
 				event = e.originalEvent,
-				data = JSON.parse(event.data);
+				data = typeof event.data === 'object' ? event.data : event.data ? JSON.parse(event.data) : {};
 
 			// Reject messages outside of the same origin
 			if($.path.parseUrl(window.location.href).domain !== $.path.parseUrl(event.origin).domain) return;
@@ -179,7 +179,7 @@ jQuery.noConflict();
 			var msg = (xhr.getResponseHeader('X-Status')) ? xhr.getResponseHeader('X-Status') : xhr.statusText,
 				reathenticate = xhr.getResponseHeader('X-Reauthenticate'),
 				msgType = (xhr.status < 200 || xhr.status > 399) ? 'bad' : 'good',
-				ignoredMessages = ['OK'];
+				ignoredMessages = ['OK', 'success', 'HTTP/2.0 200'];
 
 			// Enable reauthenticate dialog if requested
 			if(reathenticate) {
@@ -188,7 +188,7 @@ jQuery.noConflict();
 			}
 
 			// Show message (but ignore aborted requests)
-			if(xhr.status !== 0 && msg && $.inArray(msg, ignoredMessages)) {
+			if(xhr.status !== 0 && msg && $.inArray(msg, ignoredMessages) === -1) {
 				// Decode into UTF-8, HTTP headers don't allow multibyte
 				statusMessage(decodeURIComponent(msg), msgType);
 			}
@@ -748,7 +748,7 @@ jQuery.noConflict();
 				if(title) document.title = decodeURIComponent(title.replace(/\+/g, ' '));
 
 				var newFragments = {}, newContentEls;
-				// If content type is text/json (ignoring charset and other parameters)
+				// If content type is application/json (ignoring charset and other parameters)
 				if(xhr.getResponseHeader('Content-Type').match(/^((text)|(application))\/json[ \t]*;?/i)) {
 					newFragments = data;
 				} else {
@@ -914,8 +914,11 @@ jQuery.noConflict();
 					sessionStates = sessionData ? JSON.parse(sessionData) : false;
 
 				this.find('.cms-tabset, .ss-tabset').each(function() {
-					var index, tabset = $(this), tabsetId = tabset.attr('id'), tab,
-						forcedTab = tabset.find('.ss-tabs-force-active');
+					var index, 
+						tabset = $(this), 
+						tabsetId = tabset.attr('id'), 
+						tab,
+						forcedTab = tabset.children('ul').children('li.ss-tabs-force-active');
 
 					if(!tabset.data('tabs')){
 						return; // don't act on uninit'ed controls
@@ -924,18 +927,18 @@ jQuery.noConflict();
 					// The tabs may have changed, notify the widget that it should update its internal state.
 					tabset.tabs('refresh');
 
-					// Make sure the intended tab is selected.
+					// Make sure the intended tab is selected. Only force the tab on the correct tabset though
 					if(forcedTab.length) {
-						index = forcedTab.index();
+						index = forcedTab.first().index();
 					} else if(overrideStates && overrideStates[tabsetId]) {
 						tab = tabset.find(overrideStates[tabsetId].tabSelector);
 						if(tab.length){
 							index = tab.index();
 						}
 					} else if(sessionStates) {
-						$.each(sessionStates, function(i, sessionState) {
-							if(tabset.is('#' + sessionState.id)){
-								index = sessionState.selected;
+						$.each(sessionStates, function(i, state) {
+							if(tabsetId == state.id){
+								index = state.selected;
 							}
 						});
 					}
@@ -1331,7 +1334,6 @@ jQuery.noConflict();
 				}
 
 				var container = this.closest('.cms-container');
-				container.find('.cms-edit-form').tabs('select',0);  //always switch to the first tab (list view) when searching
 				container.loadPanel(url, "", {}, true);
 
 				return false;
@@ -1447,6 +1449,8 @@ jQuery.noConflict();
 						}
 					}
 				});
+
+				this.trigger('afterredrawtabs');
 			},
 
 			/**

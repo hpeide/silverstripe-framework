@@ -202,7 +202,6 @@ class UploadField extends FileField {
 	 * @param string $title The field label.
 	 * @param SS_List $items If no items are defined, the field will try to auto-detect an existing relation on
 	 *                       @link $record}, with the same name as the field name.
-	 * @param Form $form Reference to the container form
 	 */
 	public function __construct($name, $title = null, SS_List $items = null) {
 
@@ -220,11 +219,6 @@ class UploadField extends FileField {
 		$this->getValidator()->setAllowedExtensions(
 			array_filter(Config::inst()->get('File', 'allowed_extensions'))
 		);
-
-		// get the lower max size
-		$maxUpload = File::ini2bytes(ini_get('upload_max_filesize'));
-		$maxPost = File::ini2bytes(ini_get('post_max_size'));
-		$this->getValidator()->setAllowedMaxFileSize(min($maxUpload, $maxPost));
 	}
 
 	/**
@@ -870,11 +864,13 @@ class UploadField extends FileField {
 			$width = $this->getPreviewMaxWidth();
 			$height = $this->getPreviewMaxHeight();
 			if ($file->hasMethod('getThumbnail')) {
-				return $file->getThumbnail($width, $height)->getURL();
+				$r = $file->getThumbnail($width, $height);
+				if ($r) return $r->getURL();
 			} elseif ($file->hasMethod('getThumbnailURL')) {
 				return $file->getThumbnailURL($width, $height);
 			} elseif ($file->hasMethod('Fit')) {
-				return $file->Fit($width, $height)->getURL();
+				$r = $file->Fit($width, $height);
+				if ($r) return $r->getURL();
 			} else {
 				return $file->Icon();
 			}
@@ -944,7 +940,7 @@ class UploadField extends FileField {
 			$config['maxFileSize'] = $allowedMaxFileSize;
 			$config['errorMessages']['maxFileSize'] = _t(
 				'File.TOOLARGESHORT',
-				'Filesize exceeds {size}',
+				'File size exceeds {size}',
 				array('size' => File::format_size($config['maxFileSize']))
 			);
 		}
@@ -972,11 +968,11 @@ class UploadField extends FileField {
 		}
 
 		$mergedConfig = array_merge($config, $this->ufConfig);
-		return $this->customise(array(
+		return parent::Field(array(
 			'configString' => str_replace('"', "&quot;", Convert::raw2json($mergedConfig)),
 			'config' => new ArrayData($mergedConfig),
 			'multiple' => $allowedMaxFileNumber !== 1
-		))->renderWith($this->getTemplates());
+		));
 	}
 
 	/**
@@ -1116,7 +1112,7 @@ class UploadField extends FileField {
 		// to default if there is no automatic relation
 		if ($relationClass = $this->getRelationAutosetClass(null)) {
 			// Create new object explicitly. Otherwise rely on Upload::load to choose the class.
-			$fileObject = Object::create($relationClass);
+			$fileObject = SS_Object::create($relationClass);
 		}
 
 		// Get the uploaded file into a new file object.
@@ -1338,8 +1334,8 @@ class UploadField_ItemHandler extends RequestHandler {
 	);
 
 	/**
-	 * @param UploadFIeld $parent
-	 * @param int $item
+	 * @param UploadField $parent
+	 * @param int $itemID
 	 */
 	public function __construct($parent, $itemID) {
 		$this->parent = $parent;
@@ -1432,6 +1428,10 @@ class UploadField_ItemHandler extends RequestHandler {
 	 */
 	public function EditForm() {
 		$file = $this->getItem();
+		if(!$file) return $this->httpError(404);
+		if($file instanceof Folder) return $this->httpError(403);
+		if(!$file->canEdit()) return $this->httpError(403);
+
 		// Get form components
 		$fields = $this->parent->getFileEditFields($file);
 		$actions = $this->parent->getFileEditActions($file);
@@ -1491,6 +1491,14 @@ class UploadField_SelectHandler extends RequestHandler {
 	 * @var string
 	 */
 	protected $folderName;
+
+	/**
+	 * Set pagination quantity for file list field
+	 *
+	 * @config
+	 * @var int
+	 */
+	private static $page_size = 11;
 
 	private static $url_handlers = array(
 		'$Action!' => '$Action',
@@ -1574,7 +1582,10 @@ class UploadField_SelectHandler extends RequestHandler {
 		$colsComponent->setFieldCasting(array(
 			'Created' => 'SS_Datetime->Nice'
 		));
-		$config->addComponent(new GridFieldPaginator(11));
+
+ 		// Set configurable pagination for file list field
+		$pageSize = Config::inst()->get(get_class($this), 'page_size');
+		$config->addComponent(new GridFieldPaginator($pageSize));
 
 		// If relation is to be autoset, we need to make sure we only list compatible objects.
 		$baseClass = $this->parent->getRelationAutosetClass();

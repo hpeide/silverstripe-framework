@@ -204,7 +204,7 @@ class UploadFieldTest extends FunctionalTest {
 		$response = json_decode($response->getBody(), true);
 		$this->assertTrue(array_key_exists('error', $response[0]));
 		$this->assertContains('Extension is not allowed', $response[0]['error']);
-		
+
 	}
 
 	/**
@@ -497,6 +497,8 @@ class UploadFieldTest extends FunctionalTest {
 	}
 
 	public function testEdit() {
+		//for some reason the date_format is being set to null
+		Config::inst()->update('i18n', 'date_format', 'yyyy-MM-dd');
 		$memberID = $this->loginWithPermission('ADMIN');
 
 		$record = $this->objFromFixture('UploadFieldTest_Record', 'record1');
@@ -726,7 +728,9 @@ class UploadFieldTest extends FunctionalTest {
 		// A bit too much coupling with GridField, but a full template overload would make things too complex
 		$parser = new CSSContentParser($response->getBody());
 		$items = $parser->getBySelector('.ss-gridfield-item');
-		$itemIDs = array_map(create_function('$el', 'return (int)$el["data-id"];'), $items);
+		$itemIDs = array_map(function($el) {
+            return (int)$el["data-id"];
+        }, $items);
 		$this->assertContains($file4->ID, $itemIDs, 'Contains file in assigned folder');
 		$this->assertContains($fileSubfolder->ID, $itemIDs, 'Contains file in subfolder');
 	}
@@ -744,7 +748,9 @@ class UploadFieldTest extends FunctionalTest {
 		// A bit too much coupling with GridField, but a full template overload would make things too complex
 		$parser = new CSSContentParser($response->getBody());
 		$items = $parser->getBySelector('.ss-gridfield-item');
-		$itemIDs = array_map(create_function('$el', 'return (int)$el["data-id"];'), $items);
+		$itemIDs = array_map(function($el) {
+		    return (int)$el["data-id"];
+        }, $items);
 		$this->assertContains($file4->ID, $itemIDs, 'Contains file in assigned folder');
 		$this->assertNotContains($fileSubfolder->ID, $itemIDs, 'Does not contain file in subfolder');
 	}

@@ -243,7 +243,7 @@ class ImageTest extends SapphireTest {
 		$this->assertTrue($fitMaxDn->isSize(100, 100));
 		$fitMaxUp = $image->FitMax(500, 400);
 		$this->assertTrue($fitMaxUp->isSize(300, 300));
-		
+
 		//Test ScaleMax
 		$scaleMaxWDn = $image->ScaleMaxWidth(200);
 		$this->assertTrue($scaleMaxWDn->isSize(200, 200));
@@ -259,7 +259,7 @@ class ImageTest extends SapphireTest {
 		$this->assertTrue($cropMaxDn->isSize(200, 100));
 		$cropMaxUp = $image->FillMax(400, 200);
 		$this->assertTrue($cropMaxUp->isSize(300, 150));
-		
+
 		// Test Clip
 		$clipWDn = $image->CropWidth(200);
 		$this->assertTrue($clipWDn->isSize(200, 300));
@@ -282,10 +282,10 @@ class ImageTest extends SapphireTest {
 
 	public function testCacheFilename() {
 		$image = $this->objFromFixture('Image', 'imageWithoutTitle');
-		$imageFirst = $image->Pad(200,200,'CCCCCC');
+		$imageFirst = $image->Pad(200,200,'CCCCCC', 0);
 		$imageFilename = $imageFirst->getFullPath();
 			// Encoding of the arguments is duplicated from cacheFilename
-		$neededPart = 'Pad' . Convert::base64url_encode(array(200,200,'CCCCCC'));
+		$neededPart = 'Pad' . Convert::base64url_encode(array(200,200,'CCCCCC', 0));
 		$this->assertContains($neededPart, $imageFilename, 'Filename for cached image is correctly generated');
 	}
 
@@ -308,7 +308,12 @@ class ImageTest extends SapphireTest {
 
 		$imageThird = $imageSecond->Pad(600,600,'0F0F0F');
 		// Encoding of the arguments is duplicated from cacheFilename
-		$argumentString = Convert::base64url_encode(array(600,600,'0F0F0F'));
+		$argumentString = Convert::base64url_encode(array(
+			600,
+			600,
+			'0F0F0F',
+			0
+		));
 		$this->assertNotNull($imageThird);
 		$this->assertContains($argumentString, $imageThird->getFullPath(),
 			'Image contains background color for padded resizement');
@@ -319,10 +324,10 @@ class ImageTest extends SapphireTest {
 			'Image folder contains only the expected number of images before regeneration');
 
 		$imageThirdPath = $imageThird->getFullPath();
-		$hash = md5_file($imageThirdPath);
+		$stats = getimagesize($imageThirdPath);
 		$this->assertEquals(3, $image->regenerateFormattedImages(),
 			'Cached images were regenerated in the right number');
-		$this->assertEquals($hash, md5_file($imageThirdPath), 'Regeneration of third image is correct');
+		$this->assertEquals($stats, getimagesize($imageThirdPath), 'Regeneration of third image is correct');
 
 		/* Check that no other images exist, to ensure that the regeneration did not create other images */
 		$this->assertEquals($filesInFolder, $folder->find($resampledFolder),
@@ -341,7 +346,7 @@ class ImageTest extends SapphireTest {
 	}
 
 	/**
-	 * Test that propertes from the source Image are inherited by resampled images 
+	 * Test that propertes from the source Image are inherited by resampled images
 	 */
 	public function testPropertyInheritance() {
 		$testString = 'This is a test';
@@ -425,8 +430,8 @@ class ImageTest extends SapphireTest {
 
 	/**
 	 * Tests the static function Image::strip_resampled_prefix, to ensure that
-	 * the original filename can be extracted from the path of transformed images, 
-	 * both in current and previous formats 
+	 * the original filename can be extracted from the path of transformed images,
+	 * both in current and previous formats
 	 */
 	public function testStripResampledPrefix() {
 		$orig_image = $this->objFromFixture('Image', 'imageWithoutTitleContainingDots');

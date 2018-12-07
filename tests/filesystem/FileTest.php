@@ -187,6 +187,30 @@ class FileTest extends SapphireTest {
 		}
 	}
 
+	/**
+	 * Uses fixtures Folder.folder1 and File.setfromname
+	 * @dataProvider setNameFileProvider
+	 */
+	public function testSetNameAddsUniqueSuffixWhenFilenameAlreadyExists($name, $expected)
+	{
+		$duplicate = new Folder;
+		$duplicate->setName($name);
+		$duplicate->write();
+
+		$this->assertSame($expected, $duplicate->Name);
+	}
+
+	/**
+	 * @return array[]
+	 */
+	public function setNameFileProvider()
+	{
+		return array(
+			array('FileTest-folder1', 'FileTest-folder1-2'),
+			array('FileTest.png', 'FileTest-2.png'),
+		);
+	}
+
 	public function testLinkAndRelativeLink() {
 		$file = $this->objFromFixture('File', 'asdf');
 		$this->assertEquals(ASSETS_DIR . '/FileTest.txt', $file->RelativeLink());
@@ -252,7 +276,7 @@ class FileTest extends SapphireTest {
 
 		$file = $this->objFromFixture('File', 'gifupper');
 		$this->assertEquals("GIF image - good for diagrams", $file->FileType);
-	
+
 		/* Only a few file types are given special descriptions; the rest are unknown */
 		$file = $this->objFromFixture('File', 'asdf');
 		$this->assertEquals("unknown", $file->FileType);
@@ -412,7 +436,34 @@ class FileTest extends SapphireTest {
 		$this->objFromFixture('Member', 'admin')->logIn();
 		$this->assertTrue($file->canEdit(), "Admins can edit files");
 	}
-		
+
+	/**
+	 * Test that ini2bytes returns the number of bytes for a PHP ini style size declaration
+	 *
+	 * @param string $iniValue
+	 * @param int    $expected
+	 * @dataProvider ini2BytesProvider
+	 */
+	public function testIni2Bytes($iniValue, $expected) {
+		$this->assertSame($expected, File::ini2bytes($iniValue));
+	}
+
+	/**
+	 * @return array
+	 */
+	public function ini2BytesProvider() {
+		return array(
+			array('2048', 2 * 1024),
+			array('2k', 2 * 1024),
+			array('512M', 512 * 1024 * 1024),
+			array('512MiB', 512 * 1024 * 1024),
+			array('512 mbytes', 512 * 1024 * 1024),
+			array('512 megabytes', 512 * 1024 * 1024),
+			array('1024g', 1024 * 1024 * 1024 * 1024),
+			array('1024G', 1024 * 1024 * 1024 * 1024)
+		);
+	}
+
 	/////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 	public function setUp() {

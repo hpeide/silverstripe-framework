@@ -14,3 +14,21 @@ Injector:
       connector: %$MySQLiConnector
       schemaManager: %$MySQLSchemaManager
       queryBuilder: %$MySQLQueryBuilder
+  MySQLiConnector:
+    class: 'MySQLiConnector'
+    type: prototype
+  PDOConnector:
+    class: 'PDOConnector'
+    type: prototype
+  Int:
+    class: DBInt
+  int:
+    class: DBInt
+  INT:
+    class: DBInt
+  Float:
+    class: DBFloat
+  float:
+    class: DBFloat
+  FLOAT:
+    class: DBFloat

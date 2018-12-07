@@ -69,7 +69,8 @@ This is my `_ss_environment.php` file. I have it placed in `/var`, as each of th
 
 	:::php
 	<?php
-	// These three defines set the database connection details.
+	// These four define set the database connection details.
+	define('SS_DATABASE_CLASS', 'MySQLPDODatabase');
 	define('SS_DATABASE_SERVER', 'localhost');
 	define('SS_DATABASE_USERNAME', 'root');
 	define('SS_DATABASE_PASSWORD', '<password>');
@@ -101,12 +102,41 @@ This is my `_ss_environment.php` file. I have it placed in `/var`, as each of th
 	global $_FILE_TO_URL_MAPPING;
 	$_FILE_TO_URL_MAPPING['/var/www'] = 'http://simon.geek.nz';
 
+### Example settings to enable Database SSL
+
+In some circumstances, like connecting to a database on a remote host for example, you may wish to enable SSL encryption to ensure the protection of sensitive information and database access credentials. The code below illustrates how to do so.
+
+<div class="notice" markdown='1'>
+SSL database connections are supported for `MySQLDatabase` and `MySQLPDODatabase` as of the moment.
+</div>
+
+	:::php
+	<?php
+	
+	// These four define set the database connection details.
+	define('SS_DATABASE_CLASS', 'MySQLPDODatabase');
+	define('SS_DATABASE_SERVER', 'db1.example.com');
+	define('SS_DATABASE_USERNAME', '<dbuser>');
+	define('SS_DATABASE_PASSWORD', '<password>');
+	
+	// These define the paths to the SSL key, certificate, and CA certificate bundle.
+	define('SS_DATABASE_SSL_KEY', '/path/to/ssl/folder/client-key.pem');
+	define('SS_DATABASE_SSL_CERT', '/path/to/ssl/folder/client-cert.pem');
+	define('SS_DATABASE_SSL_CA', '/path/to/ssl/folder/ca-cert.pem');
+
+	// When using SSL connections, you also need to supply a username and password to override the default settings
+	define('SS_DEFAULT_ADMIN_USERNAME', 'username');
+	define('SS_DEFAULT_ADMIN_PASSWORD', 'password');
+	
+	
+When running the installer, make sure to check on the `Use _ss_environment file for configuration` option under the `Database Configuration` section to use the environment file.
+
 ## Available Constants
 
 | Name  | Description |
 | ----  | ----------- |
 | `TEMP_FOLDER` | Absolute file path to store temporary files such as cached templates or the class manifest. Needs to be writeable by the webserver user. Defaults to *silverstripe-cache* in the webroot, and falls back to *sys_get_temp_dir()*. See *getTempFolder()* in *framework/core/TempPath.php*.|
-| `SS_DATABASE_CLASS` | The database class to use, MySQLDatabase, MSSQLDatabase, etc. defaults to MySQLDatabase.|
+| `SS_DATABASE_CLASS` | The database class to use, MySQLPDODatabase, MySQLDatabase, MSSQLDatabase, etc. defaults to MySQLDatabase.|
 | `SS_DATABASE_SERVER`| The database server to use, defaulting to localhost.|
 | `SS_DATABASE_USERNAME`| The database username (mandatory).|
 | `SS_DATABASE_PASSWORD`| The database password (mandatory).|
@@ -124,3 +154,8 @@ This is my `_ss_environment.php` file. I have it placed in `/var`, as each of th
 | `SS_SEND_ALL_EMAILS_TO`| If you define this constant, all emails will be redirected to this address.|
 | `SS_SEND_ALL_EMAILS_FROM`| If you define this constant, all emails will be sent from this address.|
 | `SS_ERROR_LOG` | Relative path to the log file. |
+| `SS_CONFIGSTATICMANIFEST` | Set to `SS_ConfigStaticManifest_Reflection` to use the Silverstripe 4 Reflection config manifest (speed improvement during dev/build and ?flush) |
+| `SS_DATABASE_SSL_KEY` | Absolute path to SSL key file |
+| `SS_DATABASE_SSL_CERT` | Absolute path to SSL certificate file |
+| `SS_DATABASE_SSL_CA` | Absolute path to SSL Certificate Authority bundle file |
+| `SS_DATABASE_SSL_CIPHER` | Optional setting for custom SSL cipher |

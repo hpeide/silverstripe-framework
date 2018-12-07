@@ -10,6 +10,11 @@ or even their own code to make it more reusable.
 Extensions are defined as subclasses of either [api:DataExtension] for extending a [api:DataObject] subclass or 
 the [api:Extension] class for non DataObject subclasses (such as [api:Controllers])
 
+<div class="info" markdown="1">
+For performance reasons a few classes are excluded from receiving extensions, including `Object`, `ViewableData` 
+and `RequestHandler`. You can still apply extensions to descendants of these classes.
+</div>
+
 **mysite/code/extensions/MyMemberExtension.php**
 
 	:::php
@@ -23,7 +28,7 @@ the [api:Extension] class for non DataObject subclasses (such as [api:Controller
 
 		public function SayHi() {
 			// $this->owner refers to the original instance. In this case a `Member`.
-			return "Hi ". $this->owner->Name;
+			return "Hi " . $this->owner->Name;
 		}
 	}
 
@@ -80,7 +85,7 @@ $has_one etc.
 
 		public function SayHi() {
 			// $this->owner refers to the original instance. In this case a `Member`.
-			return "Hi ". $this->owner->Name;
+			return "Hi " . $this->owner->Name;
 		}
 	}
 
@@ -113,8 +118,8 @@ we added a `SayHi` method which is unique to our extension.
 ## Modifying Existing Methods
 
 If the `Extension` needs to modify an existing method it's a little trickier. It requires that the method you want to
-customize has provided an *Extension Hook* in the place where you want to modify the data. An *Extension Hook* is done 
-through the `[api:Object->extend]` method.
+customise has provided an *Extension Hook* in the place where you want to modify the data. An *Extension Hook* is done 
+through the [api:Object::extend()] method.
 
 **framework/security/Member.php**
 
@@ -209,8 +214,8 @@ In your [api:Extension] class you can only refer to the source object through th
 
 ## Checking to see if an Object has an Extension
 
-To see what extensions are currently enabled on an object, use [api:Object->getExtensionInstances] and 
-[api:Object->hasExtension]
+To see what extensions are currently enabled on an object, use [api:Object::getExtensionInstances()] and 
+[api:Object::hasExtension()]
 
 
 	:::php

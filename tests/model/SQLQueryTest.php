@@ -13,14 +13,14 @@ class SQLQueryTest extends SapphireTest {
 		'SQLQueryTestBase',
 		'SQLQueryTestChild'
 	);
-	
+
 	protected $oldDeprecation = null;
-	
+
 	public function setUp() {
 		parent::setUp();
 		$this->oldDeprecation = Deprecation::dump_settings();
 	}
-	
+
 	public function tearDown() {
 		Deprecation::restore_settings($this->oldDeprecation);
 		parent::tearDown();
@@ -30,14 +30,47 @@ class SQLQueryTest extends SapphireTest {
 
 		//basic counting
 		$qry = SQLQueryTest_DO::get()->dataQuery()->getFinalisedQuery();
-		$qry->setGroupBy('Common');
 		$ids = $this->allFixtureIDs('SQLQueryTest_DO');
-		$this->assertEquals(count($ids), $qry->count('"SQLQueryTest_DO"."ID"'));
+
+		$count = $qry->count('"SQLQueryTest_DO"."ID"');
+		$this->assertEquals(count($ids), $count);
+		$this->assertInternalType("int", $count);
+
+		//test with `having`
+		if (DB::get_conn() instanceof MySQLDatabase) {
+			$qry->setSelect(array(
+				'Date' => 'MAX("Date")',
+				'Common' => '"Common"',
+			));
+			$qry->setGroupBy('"Common"');
+			$qry->setHaving('"Date" > 2012-02-01');
+			$count = $qry->count('"SQLQueryTest_DO"."ID"');
+			$this->assertEquals(1, $count);
+			$this->assertInternalType("int", $count);
+		}
+	}
+
+	public function testUnlimitedRowCount() {
+		//basic counting
+		$qry = SQLQueryTest_DO::get()->dataQuery()->getFinalisedQuery();
+		$ids = $this->allFixtureIDs('SQLQueryTest_DO');
+		$qry->setLimit(1);
+
+		$count = $qry->unlimitedRowCount('"SQLQueryTest_DO"."ID"');
+		$this->assertEquals(count($ids), $count);
+		$this->assertInternalType("int", $count);
+
+		// Test without column - SQLSelect has different logic for this
+		$count = $qry->unlimitedRowCount();
+		$this->assertEquals(2, $count);
+		$this->assertInternalType("int", $count);
 
 		//test with `having`
 		if (DB::get_conn() instanceof MySQLDatabase) {
 			$qry->setHaving('"Date" > 2012-02-01');
-			$this->assertEquals(1, $qry->count('"SQLQueryTest_DO"."ID"'));
+			$count = $qry->unlimitedRowCount('"SQLQueryTest_DO"."ID"');
+			$this->assertEquals(1, $count);
+			$this->assertInternalType("int", $count);
 		}
 	}
 
@@ -94,6 +127,18 @@ class SQLQueryTest extends SapphireTest {
 		$query->setSelect("Name","Meta")->setFrom("MyTable")->setWhere("Name = 'Name'")->addWhere("Meta = 'Test'");
 		$this->assertTrue($query->canSortBy('Name ASC'));
 		$this->assertTrue($query->canSortBy('Name'));
+	}
+
+    /**
+     * Test multiple order by SQL clauses.
+     */
+	public function testAddOrderBy() {
+		$query = new SQLQuery();
+		$query->setSelect('ID', "Title")->setFrom('Page')->addOrderBy('(ID % 2)  = 0', 'ASC')->addOrderBy('ID > 50', 'ASC');
+		$this->assertSQLEquals(
+			'SELECT ID, Title, (ID % 2)  = 0 AS "_SortColumn0", ID > 50 AS "_SortColumn1" FROM Page ORDER BY "_SortColumn0" ASC, "_SortColumn1" ASC',
+			$query->sql($parameters)
+		);
 	}
 
 	public function testSelectWithChainedFilterParameters() {
@@ -290,6 +335,41 @@ class SQLQueryTest extends SapphireTest {
 		$this->assertTrue(
 			$query->filtersOnID(),
 			"filtersOnID() is true with simple unquoted column name"
+		);
+
+		$query = new SQLQuery();
+		$query->setWhere('"ID" = 5');
+		$this->assertTrue(
+			$query->filtersOnID(),
+			"filtersOnID() is true with simple quoted column name"
+		);
+
+		$query = new SQLQuery();
+		$query->setWhere(array('"ID"' => 4));
+		$this->assertTrue(
+			$query->filtersOnID(),
+			"filtersOnID() is true with parameterised quoted column name"
+		);
+
+		$query = new SQLQuery();
+		$query->setWhere(array('"ID" = ?' => 4));
+		$this->assertTrue(
+			$query->filtersOnID(),
+			"filtersOnID() is true with parameterised quoted column name"
+		);
+
+		$query = new SQLQuery();
+		$query->setWhere('"ID" IN (5,4)');
+		$this->assertTrue(
+			$query->filtersOnID(),
+			"filtersOnID() is true with WHERE ID IN"
+		);
+
+		$query = new SQLQuery();
+		$query->setWhere(array('"ID" IN ?' => array(1,2)));
+		$this->assertTrue(
+			$query->filtersOnID(),
+			"filtersOnID() is true with parameterised WHERE ID IN"
 		);
 
 		$query = new SQLQuery();
@@ -693,14 +773,14 @@ class SQLQueryTest extends SapphireTest {
 		$this->assertEquals(array('%MyName%', '2012-08-08 12:00'), $parameters);
 		$query->execute();
 	}
-	
+
 	/**
 	 * Test deprecation of SQLQuery::getWhere working appropriately
 	 */
 	public function testDeprecatedGetWhere() {
 		// Temporarily disable deprecation
 		Deprecation::notification_version(null);
-		
+
 		$query = new SQLQuery();
 		$query->setSelect(array('"SQLQueryTest_DO"."Name"'));
 		$query->setFrom('"SQLQueryTest_DO"');
@@ -711,7 +791,7 @@ class SQLQueryTest extends SapphireTest {
 		$query->addWhere(array(
 			'"SQLQueryTest_DO"."Meta" IN (?, \'Who?\', ?)' => array('Left', 'Right')
 		));
-		
+
 		$expectedSQL = <<<EOS
 SELECT "SQLQueryTest_DO"."Name"
  FROM "SQLQueryTest_DO"
@@ -721,19 +801,19 @@ SELECT "SQLQueryTest_DO"."Name"
 EOS
 			;
 		$expectedParameters = array('2012-08-08 12:00', 'Left', 'Right');
-		
-		
+
+
 		// Check sql evaluation of this query maintains the parameters
 		$sql = $query->sql($parameters);
 		$this->assertSQLEquals($expectedSQL, $sql);
 		$this->assertEquals($expectedParameters, $parameters);
-		
+
 		// Check that ->toAppropriateExpression()->setWhere doesn't modify the query
 		$query->setWhere($query->toAppropriateExpression()->getWhere());
 		$sql = $query->sql($parameters);
 		$this->assertSQLEquals($expectedSQL, $sql);
 		$this->assertEquals($expectedParameters, $parameters);
-		
+
 		// Check that getWhere are all flattened queries
 		$expectedFlattened = array(
 			'"SQLQueryTest_DO"."Date" > \'2012-08-08 12:00\'',
@@ -742,14 +822,14 @@ EOS
 		);
 		$this->assertEquals($expectedFlattened, $query->getWhere());
 	}
-	
+
 	/**
 	 * Test deprecation of SQLQuery::setDelete/getDelete
 	 */
 	public function testDeprecatedSetDelete() {
 		// Temporarily disable deprecation
 		Deprecation::notification_version(null);
-		
+
 		$query = new SQLQuery();
 		$query->setSelect(array('"SQLQueryTest_DO"."Name"'));
 		$query->setFrom('"SQLQueryTest_DO"');
@@ -764,7 +844,7 @@ EOS
 			$query->sql($parameters)
 		);
 		$this->assertEquals(array('Andrew'), $parameters);
-		
+
 		// Check setDelete works
 		$query->setDelete(true);
 	$this->assertSQLEquals(<<<EOS
@@ -775,7 +855,7 @@ EOS
 			$query->sql($parameters)
 		);
 		$this->assertEquals(array('Andrew'), $parameters);
-		
+
 		// Check that setDelete back to false restores the state
 		$query->setDelete(false);
 		$this->assertSQLEquals(<<<EOS

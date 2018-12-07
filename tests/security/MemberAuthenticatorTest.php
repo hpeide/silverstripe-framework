@@ -23,7 +23,7 @@ class MemberAuthenticatorTest extends SapphireTest {
 		Security::setDefaultAdmin($this->defaultUsername, $this->defaultPassword);
 		parent::tearDown();
 	}
-	
+
 	public function testLegacyPasswordHashMigrationUponLogin() {
 		$member = new Member();
 
@@ -137,6 +137,44 @@ class MemberAuthenticatorTest extends SapphireTest {
 		$this->assertEquals('bad', $form->MessageType());
 	}
 
+    public function testExpiredTempID()
+    {
+        //store original default admin as we'll need to clear it
+        $adminUser = Security::default_admin_username();
+        $adminPass = Security::default_admin_password();
+
+        // Make member with expired TempID
+        $member = new Member();
+        $member->Email = 'test1@test.com';
+        $member->PasswordEncryption = "sha1";
+        $member->Password = "mypassword";
+        $member->TempIDExpired = '2016-05-22 00:00:00';
+        $member->write();
+        $member->logIn(true);
+
+        $tempID = $member->TempIDHash;
+
+        // Make form
+        $controller = new Security();
+        $form = new Form($controller, 'Form', new FieldList(), new FieldList());
+
+        SS_Datetime::set_mock_now('2016-05-29 00:00:00');
+        Security::clear_default_admin();
+
+        $this->assertNotEmpty($tempID);
+        $this->assertFalse(Security::has_default_admin());
+
+        $result = MemberAuthenticator::authenticate(array(
+            'tempid' => $tempID,
+            'Password' => 'notmypassword'
+        ), $form);
+        $this->assertEmpty($result);
+
+        if (!is_null($adminUser) || !is_null($adminPass)) {
+            Security::setDefaultAdmin($adminUser, $adminPass);
+        }
+    }
+
 	/**
 	 * Test that the default admin can be authenticated
 	 */
@@ -163,5 +201,69 @@ class MemberAuthenticatorTest extends SapphireTest {
 		$this->assertEmpty($result);
 		$this->assertEquals('The provided details don&#039;t seem to be correct. Please try again.', $form->Message());
 		$this->assertEquals('bad', $form->MessageType());
+	}
+
+	public function testDefaultAdminLockOut()
+	{
+		Config::inst()->update('Member', 'lock_out_after_incorrect_logins', 1);
+		Config::inst()->update('Member', 'lock_out_delay_mins', 10);
+		SS_Datetime::set_mock_now('2016-04-18 00:00:00');
+		$controller = new Security();
+		$form = new Form($controller, 'Form', new FieldList(), new FieldList());
+
+		// Test correct login
+		MemberAuthenticator::authenticate(array(
+			'Email' => 'admin',
+			'Password' => 'wrongpassword'
+		), $form);
+
+		$this->assertTrue(Member::default_admin()->isLockedOut());
+		$this->assertEquals('2016-04-18 00:10:00', Member::default_admin()->LockedOutUntil);
+	}
+
+	public function testNonExistantMemberGetsLoginAttemptRecorded()
+	{
+		Config::inst()->update('Member', 'lock_out_after_incorrect_logins', 1);
+		$email = 'notreal@example.com';
+		$this->assertFalse(Member::get()->filter(array('Email' => $email))->exists());
+		$this->assertCount(0, LoginAttempt::get());
+		$response = MemberAuthenticator::authenticate(array(
+			'Email' => $email,
+			'Password' => 'password',
+		));
+		$this->assertNull($response);
+		$this->assertCount(1, LoginAttempt::get());
+		$attempt = LoginAttempt::get()->first();
+		$this->assertEmpty($attempt->Email); // Doesn't store potentially sensitive data
+		$this->assertEquals(sha1($email), $attempt->EmailHashed);
+		$this->assertEquals('Failure', $attempt->Status);
+
+	}
+
+	public function testNonExistantMemberGetsLockedOut()
+	{
+		Config::inst()->update('Member', 'lock_out_after_incorrect_logins', 1);
+		Config::inst()->update('Member', 'lock_out_delay_mins', 10);
+		$email = 'notreal@example.com';
+
+		$this->assertFalse(Member::get()->filter(array('Email' => $email))->exists());
+
+		$response = MemberAuthenticator::authenticate(array(
+			'Email' => $email,
+			'Password' => 'password'
+		));
+
+		$this->assertNull($response);
+		$member = new Member();
+		$member->Email = $email;
+
+		$this->assertTrue($member->isLockedOut());
+		$this->assertFalse($member->canLogIn()->valid());
+	}
+
+	public function testDefaultAuthenticatorWontReturnIfDisabled()
+	{
+		Authenticator::unregister('MemberAuthenticator');
+		$this->assertNotEquals('MemberAuthenticator', Authenticator::get_default_authenticator());
 	}
 }

@@ -26,7 +26,58 @@ class DataObjectTest extends SapphireTest {
 		'DataObjectTest_Staff',
 		'DataObjectTest_CEO',
 		'DataObjectTest_Fan',
+		'DataObjectTest_Play',
+		'DataObjectTest_Ploy',
+		'DataObjectTest_Bogey',
+		'DataObjectTest_Sortable',
+		'ManyManyListTest_Product',
+		'ManyManyListTest_Category',
 	);
+
+	/**
+	 * @dataProvider provideSingletons
+	 */
+	public function testSingleton($inst, $defaultValue, $altDefaultValue)
+	{
+		$inst = $inst();
+		// Test that populateDefaults() isn't called on singletons
+		// which can lead to SQL errors during build, and endless loops
+		if ($defaultValue) {
+			$this->assertEquals($defaultValue, $inst->MyFieldWithDefault);
+		} else {
+			$this->assertEmpty($inst->MyFieldWithDefault);
+		}
+
+		if ($altDefaultValue) {
+			$this->assertEquals($altDefaultValue, $inst->MyFieldWithAltDefault);
+		} else {
+			$this->assertEmpty($inst->MyFieldWithAltDefault);
+		}
+	}
+
+	public function provideSingletons()
+	{
+		// because PHPUnit evalutes test providers *before* setUp methods
+		// any extensions added in the setUp methods won't be available
+		// we must return closures to generate the arguments at run time
+		return array(
+			array(function () {
+				return DataObjectTest_Fixture::create();
+			}, 'Default Value', 'Default Value'),
+			array(function () {
+				return new DataObjectTest_Fixture();
+			}, 'Default Value', 'Default Value'),
+			array(function () {
+				return singleton('DataObjectTest_Fixture');
+			}, null, null),
+			array(function () {
+				return DataObjectTest_Fixture::singleton();
+			}, null, null),
+			array(function () {
+				return new DataObjectTest_Fixture(null, true);
+			}, null, null),
+		);
+	}
 
 	public function testDb() {
 		$obj = new DataObjectTest_TeamComment();
@@ -352,6 +403,23 @@ class DataObjectTest extends SapphireTest {
 		$this->assertEquals(1, $players->limit(5, 3)->count());
 	}
 
+	public function testWriteNoChangesDoesntUpdateLastEdited() {
+		// set mock now so we can be certain of LastEdited time for our test
+		SS_Datetime::set_mock_now('2017-01-01 00:00:00');
+		$obj = new DataObjectTest_Player();
+		$obj->FirstName = 'Test';
+		$obj->Surname = 'Plater';
+		$obj->Email = 'test.player@example.com';
+		$obj->write();
+		$writtenObj = DataObjectTest_Player::get()->byID($obj->ID);
+		$this->assertEquals('2017-01-01 00:00:00', $writtenObj->LastEdited);
+
+		// set mock now so we get a new LastEdited if, for some reason, it's updated
+		SS_Datetime::set_mock_now('2017-02-01 00:00:00');
+		$writtenObj->write();
+		$this->assertEquals('2017-01-01 00:00:00', $writtenObj->LastEdited);
+	}
+
 	/**
 	 * Test writing of database columns which don't correlate to a DBField,
 	 * e.g. all relation fields on has_one/has_many like "ParentID".
@@ -528,29 +596,29 @@ class DataObjectTest extends SapphireTest {
 		$obj->IsRetired = true;
 
 		$this->assertEquals(
-			$obj->getChangedFields(false, 1),
+			$obj->getChangedFields(true, DataObject::CHANGE_STRICT),
 			array(
 				'FirstName' => array(
 					'before' => 'Captain',
 					'after' => 'Captain-changed',
-					'level' => 2
+					'level' => DataObject::CHANGE_VALUE
 				),
 				'IsRetired' => array(
 					'before' => 1,
 					'after' => true,
-					'level' => 1
+					'level' => DataObject::CHANGE_STRICT
 				)
 			),
 			'Changed fields are correctly detected with strict type changes (level=1)'
 		);
 
 		$this->assertEquals(
-			$obj->getChangedFields(false, 2),
+			$obj->getChangedFields(true, DataObject::CHANGE_VALUE),
 			array(
 				'FirstName' => array(
 					'before'=>'Captain',
 					'after'=>'Captain-changed',
-					'level' => 2
+					'level' => DataObject::CHANGE_VALUE
 				)
 			),
 			'Changed fields are correctly detected while ignoring type changes (level=2)'
@@ -559,50 +627,58 @@ class DataObjectTest extends SapphireTest {
 		$newObj = new DataObjectTest_Player();
 		$newObj->FirstName = "New Player";
 		$this->assertEquals(
-			$newObj->getChangedFields(false, 2),
 			array(
 				'FirstName' => array(
 					'before' => null,
 					'after' => 'New Player',
-					'level' => 2
+					'level' => DataObject::CHANGE_VALUE
 				)
 			),
+			$newObj->getChangedFields(true, DataObject::CHANGE_VALUE),
 			'Initialised fields are correctly detected as full changes'
 		);
 	}
 
 	public function testIsChanged() {
 		$obj = $this->objFromFixture('DataObjectTest_Player', 'captain1');
+		$obj->NonDBField = 'bob';
 		$obj->FirstName = 'Captain-changed';
 		$obj->IsRetired = true; // type change only, database stores "1"
 
-		$this->assertTrue($obj->isChanged('FirstName', 1));
-		$this->assertTrue($obj->isChanged('FirstName', 2));
-		$this->assertTrue($obj->isChanged('IsRetired', 1));
-		$this->assertFalse($obj->isChanged('IsRetired', 2));
+		// Now that DB fields are changed, isChanged is true
+		$this->assertTrue($obj->isChanged('NonDBField'));
+		$this->assertFalse($obj->isChanged('NonField'));
+		$this->assertTrue($obj->isChanged('FirstName', DataObject::CHANGE_STRICT));
+		$this->assertTrue($obj->isChanged('FirstName', DataObject::CHANGE_VALUE));
+		$this->assertTrue($obj->isChanged('IsRetired', DataObject::CHANGE_STRICT));
+		$this->assertFalse($obj->isChanged('IsRetired', DataObject::CHANGE_VALUE));
 		$this->assertFalse($obj->isChanged('Email', 1), 'Doesnt change mark unchanged property');
 		$this->assertFalse($obj->isChanged('Email', 2), 'Doesnt change mark unchanged property');
 
 		$newObj = new DataObjectTest_Player();
 		$newObj->FirstName = "New Player";
-		$this->assertTrue($newObj->isChanged('FirstName', 1));
-		$this->assertTrue($newObj->isChanged('FirstName', 2));
-		$this->assertFalse($newObj->isChanged('Email', 1));
-		$this->assertFalse($newObj->isChanged('Email', 2));
+		$this->assertTrue($newObj->isChanged('FirstName', DataObject::CHANGE_STRICT));
+		$this->assertTrue($newObj->isChanged('FirstName', DataObject::CHANGE_VALUE));
+		$this->assertFalse($newObj->isChanged('Email', DataObject::CHANGE_STRICT));
+		$this->assertFalse($newObj->isChanged('Email', DataObject::CHANGE_VALUE));
 
 		$newObj->write();
-		$this->assertFalse($newObj->isChanged('FirstName', 1));
-		$this->assertFalse($newObj->isChanged('FirstName', 2));
-		$this->assertFalse($newObj->isChanged('Email', 1));
-		$this->assertFalse($newObj->isChanged('Email', 2));
+		$this->assertFalse($newObj->ischanged());
+		$this->assertFalse($newObj->isChanged('FirstName', DataObject::CHANGE_STRICT));
+		$this->assertFalse($newObj->isChanged('FirstName', DataObject::CHANGE_VALUE));
+		$this->assertFalse($newObj->isChanged('Email', DataObject::CHANGE_STRICT));
+		$this->assertFalse($newObj->isChanged('Email', DataObject::CHANGE_VALUE));
 
 		$obj = $this->objFromFixture('DataObjectTest_Player', 'captain1');
 		$obj->FirstName = null;
-		$this->assertTrue($obj->isChanged('FirstName', 1));
-		$this->assertTrue($obj->isChanged('FirstName', 2));
+		$this->assertTrue($obj->isChanged('FirstName', DataObject::CHANGE_STRICT));
+		$this->assertTrue($obj->isChanged('FirstName', DataObject::CHANGE_VALUE));
 
 		/* Test when there's not field provided */
-		$obj = $this->objFromFixture('DataObjectTest_Player', 'captain1');
+		$obj = $this->objFromFixture('DataObjectTest_Player', 'captain2');
+		$this->assertFalse($obj->isChanged());
+		$obj->NonDBField = 'new value';
+		$this->assertFalse($obj->isChanged());
 		$obj->FirstName = "New Player";
 		$this->assertTrue($obj->isChanged());
 
@@ -906,6 +982,16 @@ class DataObjectTest extends SapphireTest {
 		$this->assertEmpty($fields);
 	}
 
+	public function testCastingHelper() {
+		$team = $this->objFromFixture('DataObjectTest_Team', 'team1');
+
+		$this->assertEquals('Varchar', $team->castingHelper('Title'), 'db field wasn\'t casted correctly');
+		$this->assertEquals('HTMLVarchar', $team->castingHelper('DatabaseField'), 'db field wasn\'t casted correctly');
+
+		$sponsor = $team->Sponsors()->first();
+		$this->assertEquals('Int', $sponsor->castingHelper('SponsorFee'), 'many_many_extraFields not casted correctly');
+	}
+
 	public function testSummaryFieldsCustomLabels() {
 		$team = $this->objFromFixture('DataObjectTest_Team', 'team1');
 		$summaryFields = $team->summaryFields();
@@ -1103,62 +1189,40 @@ class DataObjectTest extends SapphireTest {
 	}
 
 	public function testValidateModelDefinitionsFailsWithArray() {
-		Config::nest();
-		
+
 		$object = new DataObjectTest_Team;
 		$method = $this->makeAccessible($object, 'validateModelDefinitions');
 
 		Config::inst()->update('DataObjectTest_Team', 'has_one', array('NotValid' => array('NoArraysAllowed')));
 		$this->setExpectedException('LogicException');
 
-		try {
-			$method->invoke($object);
-		} catch(Exception $e) {
-			Config::unnest(); // Catch the exception so we can unnest config before failing the test
-			throw $e;
-		}
+		$method->invoke($object);
 	}
 
 	public function testValidateModelDefinitionsFailsWithIntKey() {
-		Config::nest();
-		
 		$object = new DataObjectTest_Team;
 		$method = $this->makeAccessible($object, 'validateModelDefinitions');
 
 		Config::inst()->update('DataObjectTest_Team', 'has_many', array(12 => 'DataObjectTest_Player'));
 		$this->setExpectedException('LogicException');
 
-		try {
-			$method->invoke($object);
-		} catch(Exception $e) {
-			Config::unnest(); // Catch the exception so we can unnest config before failing the test
-			throw $e;
-		}
+		$method->invoke($object);
 	}
 
 	public function testValidateModelDefinitionsFailsWithIntValue() {
-		Config::nest();
-		
 		$object = new DataObjectTest_Team;
 		$method = $this->makeAccessible($object, 'validateModelDefinitions');
 
 		Config::inst()->update('DataObjectTest_Team', 'many_many', array('Players' => 12));
 		$this->setExpectedException('LogicException');
 
-		try {
-			$method->invoke($object);
-		} catch(Exception $e) {
-			Config::unnest(); // Catch the exception so we can unnest config before failing the test
-			throw $e;
-		}
+		$method->invoke($object);
 	}
 
 	/**
 	 * many_many_extraFields is allowed to have an array value, so shouldn't throw an exception
 	 */
 	public function testValidateModelDefinitionsPassesWithExtraFields() {
-		Config::nest();
-		
 		$object = new DataObjectTest_Team;
 		$method = $this->makeAccessible($object, 'validateModelDefinitions');
 
@@ -1168,12 +1232,9 @@ class DataObjectTest extends SapphireTest {
 		try {
 			$method->invoke($object);
 		} catch(Exception $e) {
-			Config::unnest();
 			$this->fail('Exception should not be thrown');
 			throw $e;
 		}
-
-		Config::unnest();
 	}
 
 	public function testNewClassInstance() {
@@ -1341,7 +1402,10 @@ class DataObjectTest extends SapphireTest {
 		$assertions = array(
 			'DataObjectTest_Player'       => 'Data Object Test Players',
 			'DataObjectTest_Team'         => 'Data Object Test Teams',
-			'DataObjectTest_Fixture'      => 'Data Object Test Fixtures'
+			'DataObjectTest_Fixture'      => 'Data Object Test Fixtures',
+			'DataObjectTest_Play'         => 'Data Object Test Plays',
+			'DataObjectTest_Bogey'        => 'Data Object Test Bogeys',
+			'DataObjectTest_Ploy'         => 'Data Object Test Ploys',
 		);
 
 		foreach($assertions as $class => $expectedPluralName) {
@@ -1674,6 +1738,20 @@ class DataObjectTest extends SapphireTest {
 
 	}
 
+	public function testBigIntField() {
+		$staff = new DataObjectTest_Staff();
+		$staff->Salary = PHP_INT_MAX;
+		$staff->write();
+		$this->assertEquals(PHP_INT_MAX, DataObjectTest_Staff::get()->byID($staff->ID)->Salary);
+	}
+
+}
+
+class DataObjectTest_Sortable extends DataObject implements TestOnly {
+	private static $db = array(
+		'Sort' => 'Int',
+		'Name' => 'Varchar',
+	);
 }
 
 class DataObjectTest_Player extends Member implements TestOnly {
@@ -1780,6 +1858,8 @@ class DataObjectTest_Fixture extends DataObject implements TestOnly {
 		'DateField.Nice' => 'Date'
 	);
 
+	private static $default_sort = '"DataObjectTest_Fixture"."ID" ASC';
+
 	private static $searchable_fields = array();
 
 	public function populateDefaults() {
@@ -1802,7 +1882,7 @@ class DataObjectTest_SubTeam extends DataObjectTest_Team implements TestOnly {
 	private static $many_many = array(
 		'FormerPlayers' => 'DataObjectTest_Player'
 	);
-	
+
 	private static $many_many_extraFields = array(
 		'FormerPlayers' => array(
 			'Position' => 'Varchar(100)'
@@ -1887,11 +1967,14 @@ class DataObjectTest_EquipmentCompany extends DataObjectTest_Company implements 
 
 class DataObjectTest_SubEquipmentCompany extends DataObjectTest_EquipmentCompany implements TestOnly {
 	private static $db = array(
-		'SubclassDatabaseField' => 'Varchar'
+		'SubclassDatabaseField' => 'Varchar',
 	);
 }
 
 class DataObjectTest_Staff extends DataObject implements TestOnly {
+	private static $db = array(
+		'Salary' => 'BigInt',
+	);
 	private static $has_one = array (
 		'CurrentCompany'  => 'DataObjectTest_Company',
 		'PreviousCompany' => 'DataObjectTest_Company'
@@ -1916,6 +1999,7 @@ class DataObjectTest_TeamComment extends DataObject implements TestOnly {
 		'Team' => 'DataObjectTest_Team'
 	);
 
+	private static $default_sort = '"Name" ASC';
 }
 
 class DataObjectTest_Fan extends DataObject implements TestOnly {
@@ -1935,6 +2019,10 @@ class DataObjectTest_ExtendedTeamComment extends DataObjectTest_TeamComment {
 		'Comment' => 'HTMLText'
 	);
 }
+
+class DataObjectTest_Play extends DataObject implements TestOnly {}
+class DataObjectTest_Ploy extends DataObject implements TestOnly {}
+class DataObjectTest_Bogey extends DataObject implements TestOnly {}
 
 DataObjectTest_Team::add_extension('DataObjectTest_Team_Extension');
 

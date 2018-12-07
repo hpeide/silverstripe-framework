@@ -19,6 +19,16 @@ class FormTest extends FunctionalTest {
 		Config::inst()->update('Director', 'rules', array(
 			'FormTest_Controller' => 'FormTest_Controller'
 		));
+
+		// Suppress themes
+		Config::inst()->remove('SSViewer', 'theme');
+	}
+
+	public function boolDataProvider() {
+		return array(
+			array(false),
+			array(true),
+		);
 	}
 
 	public function testLoadDataFromRequest() {
@@ -55,10 +65,37 @@ class FormTest extends FunctionalTest {
 		$form->loadDataFrom($requestData);
 
 		$fields = $form->Fields();
-		$this->assertEquals($fields->fieldByName('key1')->Value(), 'val1');
-		$this->assertEquals($fields->fieldByName('namespace[key2]')->Value(), 'val2');
-		$this->assertEquals($fields->fieldByName('namespace[key3][key4]')->Value(), 'val4');
-		$this->assertEquals($fields->fieldByName('othernamespace[key5][key6][key7]')->Value(), 'val7');
+		$this->assertEquals('val1', $fields->fieldByName('key1')->Value());
+		$this->assertEquals('val2', $fields->fieldByName('namespace[key2]')->Value());
+		$this->assertEquals('val4', $fields->fieldByName('namespace[key3][key4]')->Value());
+		$this->assertEquals('val7', $fields->fieldByName('othernamespace[key5][key6][key7]')->Value());
+	}
+
+	public function testSubmitReadonlyFields() {
+		$this->get('FormTest_Controller');
+
+		// Submitting a value for a readonly field should be ignored
+		$response = $this->post(
+			'FormTest_Controller/Form',
+			array(
+				'Email' => 'invalid',
+				'Number' => '888',
+				'ReadonlyField' => '<script>alert("hacxzored")</script>'
+				// leaving out "Required" field
+			)
+		);
+
+		// Number field updates its value
+		$this->assertContains('<input type="text" name="Number" value="888"', $response->getBody());
+
+
+		// Readonly field remains
+		$this->assertContains(
+			'<input type="text" name="ReadonlyField" value="This value is readonly"',
+			$response->getBody()
+		);
+
+		$this->assertNotContains('hacxzored', $response->getBody());
 	}
 
 	public function testLoadDataFromUnchangedHandling() {
@@ -176,6 +213,34 @@ class FormTest extends FunctionalTest {
 		);
 	}
 
+	public function testLookupFieldDisabledSaving() {
+		$object = new DataObjectTest_Team();
+		$form = new Form(
+			new Controller(),
+			'Form',
+			new FieldList(
+				new LookupField('Players', 'Players')
+			),
+			new FieldList()
+		);
+		$form->loadDataFrom(array(
+			'Players' => array(
+				14,
+				18,
+				22
+			),
+		));
+		$form->saveInto($object);
+		$playersIds = $object->Players()->getIDList();
+
+		$this->assertTrue($form->validate());
+		$this->assertEquals(
+			$playersIds,
+			array(),
+			'saveInto() should not save into the DataObject for the LookupField'
+		);
+	}
+
 	public function testLoadDataFromIgnoreFalseish() {
 		$form = new Form(
 			new Controller(),
@@ -235,6 +300,7 @@ class FormTest extends FunctionalTest {
 			'FormTest_Controller/Form',
 			array(
 				'Email' => 'invalid',
+				'Number' => '<a href="http://mysite.com">link</a>' // XSS attempt
 				// leaving out "Required" field
 			)
 		);
@@ -252,6 +318,17 @@ class FormTest extends FunctionalTest {
 				'"Some Required Field" is required'
 			),
 			'Required fields show a notification on field when left blank'
+		);
+
+		$this->assertContains(
+			'&#039;&lt;a href=&quot;http://mysite.com&quot;&gt;link&lt;/a&gt;&#039; is not a number, only numbers can be accepted for this field',
+			$response->getBody(),
+			"Validation messages are safely XML encoded"
+		);
+		$this->assertNotContains(
+			'<a href="http://mysite.com">link</a>',
+			$response->getBody(),
+			"Unsafe content is not emitted directly inside the response body"
 		);
 	}
 
@@ -309,7 +386,7 @@ class FormTest extends FunctionalTest {
 	public function testDisableSecurityTokenAcceptsSubmissionWithoutToken() {
 		SecurityToken::enable();
 		$expectedToken = SecurityToken::inst()->getValue();
-		
+
 		$response = $this->get('FormTest_ControllerWithSecurityToken');
 		// can't use submitForm() as it'll automatically insert SecurityID into the POST data
 		$response = $this->post(
@@ -479,8 +556,6 @@ class FormTest extends FunctionalTest {
 	}
 
 	public function testDefaultClasses() {
-		Config::nest();
-
 		Config::inst()->update('Form', 'default_classes', array(
 			'class1',
 		));
@@ -509,8 +584,6 @@ class FormTest extends FunctionalTest {
 		$form->removeExtraClass('class3');
 
 		$this->assertNotContains('class3', $form->extraClass(), 'Class list contains unexpected class');
-
-		Config::unnest();
 	}
 
 	public function testAttributes() {
@@ -520,6 +593,60 @@ class FormTest extends FunctionalTest {
 		$attrs = $form->getAttributes();
 		$this->assertArrayHasKey('foo', $attrs);
 		$this->assertEquals('bar', $attrs['foo']);
+	}
+
+	public function testButtonClicked() {
+		$form = $this->getStubForm();
+		$action = $form->buttonClicked();
+		$this->assertNull($action);
+
+		$controller = new FormTest_Controller();
+		$form = $controller->Form();
+		$request = new SS_HTTPRequest('POST', 'FormTest_Controller/Form', array(), array(
+			'Email' => 'test@test.com',
+			'SomeRequiredField' => 1,
+			'action_doSubmit' => 1
+		));
+
+		$form->httpSubmission($request);
+		$button = $form->buttonClicked();
+		$this->assertInstanceOf('FormAction', $button);
+		$this->assertEquals('doSubmit', $button->actionName());
+
+		$form = new Form(
+			$controller,
+			'Form',
+			new FieldList(new FormAction('doSubmit', 'Inline action')),
+			new FieldList()
+		);
+		$form->disableSecurityToken();
+		$request = new SS_HTTPRequest('POST', 'FormTest_Controller/Form', array(), array(
+			'action_doSubmit' => 1
+		));
+
+		$form->httpSubmission($request);
+		$button = $form->buttonClicked();
+		$this->assertInstanceOf('FormAction', $button);
+		$this->assertEquals('doSubmit', $button->actionName());
+	}
+
+	public function testCheckAccessAction() {
+		$controller = new FormTest_Controller();
+		$form = new Form(
+			$controller,
+			'Form',
+			new FieldList(),
+			new FieldList(new FormAction('actionName', 'Action'))
+		);
+		$this->assertTrue($form->checkAccessAction('actionName'));
+
+		$form = new Form(
+			$controller,
+			'Form',
+			new FieldList(new FormAction('inlineAction', 'Inline action')),
+			new FieldList()
+		);
+		$this->assertTrue($form->checkAccessAction('inlineAction'));
 	}
 
 	public function testAttributesHTML() {
@@ -607,7 +734,58 @@ class FormTest extends FunctionalTest {
         $formData = $form->getData();
         $this->assertEmpty($formData['ExtraFieldCheckbox']);
     }
-	
+
+
+    /**
+     * @dataProvider boolDataProvider
+     * @param bool $allow
+     */
+    public function testPasswordRemovedFromResponseData($allow) {		
+		$form = $this->getStubForm();
+		$form->enableSecurityToken();
+		$form->Fields()->push(
+			new TextField('Username')
+		);
+		$form->Fields()->push(
+			PasswordField::create('Password')
+				->setAllowValuePostback($allow)
+		);
+		$form->Actions()->push(
+			new FormAction('submit')
+		);
+		$form->handleRequest(
+			new SS_HTTPRequest(
+				'POST',
+				'/',
+				array(),
+				array(
+					'Username' => 'uncle',
+					'Password' => 'cheese',
+					'SecurityID' => 'FAIL',
+					'action_submit' => 1
+				)
+			),
+			DataModel::inst()
+		);
+
+		$parser = new CSSContentParser($result = $form->forTemplate());
+        $passwords = $parser->getBySelector('input#Password');
+        $this->assertNotNull($passwords);
+        $this->assertCount(1, $passwords);
+        /* @var \SimpleXMLElement $password */
+        $password = $passwords[0];
+        $attrs = iterator_to_array($password->attributes());
+
+        if ($allow) {
+            $this->assertArrayHasKey('value', $attrs);
+            $this->assertEquals('cheese', $attrs['value']);
+        } else {
+            $this->assertArrayNotHasKey('value', $attrs);
+        }
+
+    }    
+
+
 	protected function getStubForm() {
 		return new Form(
 			new FormTest_Controller(),
@@ -685,7 +863,11 @@ class FormTest_Controller extends Controller implements TestOnly {
 			new FieldList(
 				new EmailField('Email'),
 				new TextField('SomeRequiredField'),
-				new CheckboxSetField('Boxes', null, array('1'=>'one','2'=>'two'))
+				new CheckboxSetField('Boxes', null, array('1'=>'one','2'=>'two')),
+				new NumericField('Number'),
+				TextField::create('ReadonlyField')
+					->setReadonly(true)
+					->setValue('This value is readonly')
 			),
 			new FieldList(
 				new FormAction('doSubmit')

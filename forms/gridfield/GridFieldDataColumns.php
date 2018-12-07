@@ -33,7 +33,7 @@ class GridFieldDataColumns implements GridField_ColumnProvider {
 	 */
 	public function augmentColumns($gridField, &$columns) {
 		$baseColumns = array_keys($this->getDisplayFields($gridField));
-		
+
 		foreach($baseColumns as $col) {
 			$columns[] = $col;
 		}
@@ -174,8 +174,8 @@ class GridFieldDataColumns implements GridField_ColumnProvider {
 	 * e.g. to set a title for a search column header.
 	 *
 	 * @param GridField $gridField
-	 * @param string $columnName
-	 * @return array - Map of arbitrary metadata identifiers to their values.
+	 * @param string $column
+	 * @return array Map of arbitrary metadata identifiers to their values.
 	 */
 	public function getColumnMetadata($gridField, $column) {
 		$columns = $this->getDisplayFields($gridField);

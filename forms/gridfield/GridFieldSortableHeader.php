@@ -61,7 +61,8 @@ class GridFieldSortableHeader implements GridField_HTMLProvider, GridField_DataM
 	 * Specify sortings with fieldname as the key, and actual fieldname to sort as value.
 	 * Example: array("MyCustomTitle"=>"Title", "MyCustomBooleanField" => "ActualBooleanField")
 	 *
-	 * @param array $casting
+	 * @param array $sorting
+	 * @return $this
 	 */
 	public function setFieldSorting($sorting) {
 		$this->fieldSorting = $sorting;
@@ -77,6 +78,8 @@ class GridFieldSortableHeader implements GridField_HTMLProvider, GridField_DataM
 
 	/**
 	 * Returns the header row providing titles with sort buttons
+	 *
+	 * @param GridField $gridField
 	 */
 	public function getHTMLFragments($gridField) {
 		if(!$this->checkDataType($gridField->getList())) return;
@@ -114,8 +117,8 @@ class GridFieldSortableHeader implements GridField_HTMLProvider, GridField_DataM
 					} elseif(method_exists($tmpItem, 'hasMethod') && $tmpItem->hasMethod($methodName)) {
 						// The part is a relation name, so get the object/list from it
 						$tmpItem = $tmpItem->$methodName();
-					} elseif($tmpItem instanceof DataObject && $tmpItem->hasField($methodName)) {
-						// Else, if we've found a field at the end of the chain, we can sort on it.
+					} elseif($tmpItem instanceof DataObject && $tmpItem->hasDatabaseField($methodName)) {
+						// Else, if we've found a database field at the end of the chain, we can sort on it.
 						// If a method is applied further to this field (E.g. 'Cost.Currency') then don't try to sort.
 						$allowSort = $idx === sizeof($parts) - 1;
 						break;
@@ -132,7 +135,7 @@ class GridFieldSortableHeader implements GridField_HTMLProvider, GridField_DataM
 					$dir = 'desc';
 				}
 
-				$field = Object::create(
+				$field = SS_Object::create(
 					'GridField_FormAction', $gridField, 'SetOrder'.$fieldName, $title,
 					"sort$dir", array('SortColumn' => $columnField)
 				)->addExtraClass('ss-gridfield-sort');
@@ -150,7 +153,7 @@ class GridFieldSortableHeader implements GridField_HTMLProvider, GridField_DataM
 						&& $gridField->getConfig()->getComponentByType('GridFieldFilterHeader')){
 
 					$field = new LiteralField($fieldName,
-						'<button name="showFilter" class="ss-gridfield-button-filter trigger"></button>');
+						'<button type="button" name="showFilter" class="ss-gridfield-button-filter trigger"></button>');
 				} else {
 					$field = new LiteralField($fieldName, '<span class="non-sortable">' . $title . '</span>');
 				}
@@ -192,7 +195,7 @@ class GridFieldSortableHeader implements GridField_HTMLProvider, GridField_DataM
 	}
 
 	/**
-	 * Returns the manipulated (sorted) DataList. Field names will simply add an 
+	 * Returns the manipulated (sorted) DataList. Field names will simply add an
 	 * 'ORDER BY' clause, relation names will add appropriate joins to the
 	 * {@link DataQuery} first.
 	 *
@@ -225,7 +228,7 @@ class GridFieldSortableHeader implements GridField_HTMLProvider, GridField_DataM
 					$tmpItem = $tmpItem->$methodName();
 
 					$joinClass = ClassInfo::table_for_object_field(
-						$lastAlias, 
+						$lastAlias,
 						$methodName . "ID"
 					);
 

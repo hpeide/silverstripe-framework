@@ -33,7 +33,8 @@ class DevelopmentAdmin extends Controller {
 		parent::init();
 
 		// Special case for dev/build: Defer permission checks to DatabaseAdmin->init() (see #4957)
-		$requestedDevBuild = (stripos($this->getRequest()->getURL(), 'dev/build') === 0);
+		$requestedDevBuild = (stripos($this->getRequest()->getURL(), 'dev/build') === 0)
+			&& (stripos($this->getRequest()->getURL(), 'dev/build/defaults') === false);
 
 		// We allow access to this controller regardless of live-status or ADMIN permission only
 		// if on CLI.  Access to this controller is always allowed in "dev-mode", or of the user is ADMIN.
@@ -75,7 +76,8 @@ class DevelopmentAdmin extends Controller {
 		// Backwards compat: Default to "draft" stage, which is important
 		// for tasks like dev/build which call DataObject->requireDefaultRecords(),
 		// but also for other administrative tasks which have assumptions about the default stage.
-		Versioned::reading_stage('Stage');
+		Versioned::reading_stage(Versioned::DRAFT);
+		Versioned::set_default_reading_mode(Versioned::get_reading_mode());
 	}
 
 	public function index() {

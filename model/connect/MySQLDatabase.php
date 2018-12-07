@@ -12,7 +12,7 @@ class MySQLDatabase extends SS_Database {
 
 	/**
 	 * Default connection charset (may be overridden in $databaseConfig)
-	 * 
+	 *
 	 * @config
 	 * @var String
 	 */
@@ -29,6 +29,13 @@ class MySQLDatabase extends SS_Database {
 			&& ($charset = Config::inst()->get('MySQLDatabase', 'connection_charset'))
 		) {
 			$parameters['charset'] = $charset;
+		}
+
+		// Set collation
+		if( empty($parameters['collation'])
+			&& ($collation = Config::inst()->get('MySQLDatabase', 'connection_collation'))
+		) {
+			$parameters['collation'] = $collation;
 		}
 
 		// Notify connector of parameters
@@ -98,10 +105,14 @@ class MySQLDatabase extends SS_Database {
 	public function searchEngine($classesToSearch, $keywords, $start, $pageLength, $sortBy = "Relevance DESC",
 		$extraFilter = "", $booleanSearch = false, $alternativeFileFilter = "", $invertedMatch = false
 	) {
-		if (!class_exists('SiteTree'))
-				throw new Exception('MySQLDatabase->searchEngine() requires "SiteTree" class');
-		if (!class_exists('File'))
-				throw new Exception('MySQLDatabase->searchEngine() requires "File" class');
+		if (!class_exists('SiteTree')) {
+			throw new Exception('MySQLDatabase->searchEngine() requires "SiteTree" class');
+		}
+		if (!class_exists('File')) {
+			throw new Exception('MySQLDatabase->searchEngine() requires "File" class');
+		}
+		$start = (int)$start;
+		$pageLength = (int)$pageLength;
 
 		$keywords = $this->escapeString($keywords);
 		$htmlEntityKeywords = htmlentities($keywords, ENT_NOQUOTES, 'UTF-8');
@@ -127,7 +138,7 @@ class MySQLDatabase extends SS_Database {
 		if (array_key_exists('ShowInSearch', $fields))
 				$extraFilters['File'] .= " AND ShowInSearch <> 0";
 
-		$limit = $start . ", " . (int) $pageLength;
+		$limit = $start . ", " . $pageLength;
 
 		$notMatch = $invertedMatch
 				? "NOT "
@@ -159,18 +170,20 @@ class MySQLDatabase extends SS_Database {
 			$baseClasses[$class] = '"' . $class . '"';
 		}
 
+		$charset = Config::inst()->get('MySQLDatabase', 'charset');
+
 		// Make column selection lists
 		$select = array(
 			'SiteTree' => array(
 				"ClassName", "$baseClasses[SiteTree].\"ID\"", "ParentID",
 				"Title", "MenuTitle", "URLSegment", "Content",
 				"LastEdited", "Created",
-				"Filename" => "_utf8''", "Name" => "_utf8''",
+				"Filename" => "_{$charset}''", "Name" => "_{$charset}''",
 				"Relevance" => $relevance['SiteTree'], "CanViewType"
 			),
 			'File' => array(
-				"ClassName", "$baseClasses[File].\"ID\"", "ParentID" => "_utf8''",
-				"Title", "MenuTitle" => "_utf8''", "URLSegment" => "_utf8''", "Content",
+				"ClassName", "$baseClasses[File].\"ID\"", "ParentID",
+				"Title", "MenuTitle" => "_{$charset}''", "URLSegment" => "_{$charset}''", "Content",
 				"LastEdited", "Created",
 				"Filename", "Name",
 				"Relevance" => $relevance['File'], "CanViewType" => "NULL"
@@ -348,5 +361,24 @@ class MySQLDatabase extends SS_Database {
 
 	public function random() {
 		return 'RAND()';
+	}
+
+	/**
+	 * Clear all data in a given table
+	 *
+	 * @param string $table Name of table
+	 */
+	public function clearTable($table) {
+		$this->query("DELETE FROM \"$table\"");
+
+		// Check if resetting the auto-increment is needed
+		$autoIncrement = $this->preparedQuery(
+			'SELECT "AUTO_INCREMENT" FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?',
+			[ $this->getSelectedDatabase(), $table]
+		)->value();
+
+		if ($autoIncrement > 1) {
+			$this->query("ALTER TABLE \"$table\" AUTO_INCREMENT = 1");
+		}
 	}
 }

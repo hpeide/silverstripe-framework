@@ -95,8 +95,8 @@ class Image extends File implements Flushable {
 
 	/**
 	 * Retrieve the original filename from the path of a transformed image.
-	 * Any other filenames pass through unchanged. 
-	 * 
+	 * Any other filenames pass through unchanged.
+	 *
 	 * @param string $path
 	 * @return string
 	 */
@@ -130,6 +130,8 @@ class Image extends File implements Flushable {
 		//attach the addition file information for an image to the existing FieldGroup create in the parent class
 		$fileAttributes = $fields->fieldByName('Root.Main.FilePreview')->fieldByName('FilePreviewData');
 		$fileAttributes->push(new ReadonlyField("Dimensions", _t('AssetTableField.DIM','Dimensions') . ':'));
+
+		$fields->fieldByName('Root.Main.Title')->setTitle(_t('Image.TITLE', 'Title (alt text)'));
 
 		return $fields;
 	}
@@ -220,7 +222,7 @@ class Image extends File implements Flushable {
 	 *
 	 * @param integer $width The width to size within
 	 * @param integer $height The height to size within
-	 * @return Image
+	 * @return Image|null
 	 */
 	public function Fit($width, $height) {
 		// Prevent divide by zero on missing/blank file
@@ -249,8 +251,10 @@ class Image extends File implements Flushable {
 	 * @param integer $width The width to size within
 	 * @param integer $height The height to size within
 	 * @return Image_Backend
+	 * @deprecated 4.0 Generate methods are no longer applicable
 	 */
 	public function generateFit(Image_Backend $backend, $width, $height) {
+		Deprecation::notice('4.0', 'Generate methods are no longer applicable');
 		return $backend->resizeRatio($width, $height);
 	}
 
@@ -278,7 +282,7 @@ class Image extends File implements Flushable {
 	 *
 	 * @param integer $width Width to crop to
 	 * @param integer $height Height to crop to
-	 * @return Image
+	 * @return Image|null
 	 */
 	public function Fill($width, $height) {
 		return $this->isSize($width, $height) && !Config::inst()->get('Image', 'force_resample')
@@ -294,8 +298,10 @@ class Image extends File implements Flushable {
 	 * @param integer $width Width to crop to
 	 * @param integer $height Height to crop to
 	 * @return Image_Backend
+	 * @deprecated 4.0 Generate methods are no longer applicable
 	 */
 	public function generateFill(Image_Backend $backend, $width, $height) {
+		Deprecation::notice('4.0', 'Generate methods are no longer applicable');
 		return $backend->croppedResize($width, $height);
 	}
 
@@ -335,12 +341,14 @@ class Image extends File implements Flushable {
 	 *
 	 * @param integer $width The width to size to
 	 * @param integer $height The height to size to
-	 * @return Image
+	 * @param string  $backgroundColor The background colour to use on padded sides (default white)
+	 * @param integer $transparencyPercent Level of transparency
+	 * @return Image|null
 	 */
-	public function Pad($width, $height, $backgroundColor='FFFFFF') {
+	public function Pad($width, $height, $backgroundColor = 'FFFFFF', $transparencyPercent = 0) {
 		return $this->isSize($width, $height) && !Config::inst()->get('Image', 'force_resample')
 			? $this
-			: $this->getFormattedImage('Pad', $width, $height, $backgroundColor);
+			: $this->getFormattedImage('Pad', $width, $height, $backgroundColor, $transparencyPercent);
 	}
 
 	/**
@@ -349,17 +357,23 @@ class Image extends File implements Flushable {
 	 * @param Image_Backend $backend
 	 * @param integer $width The width to size to
 	 * @param integer $height The height to size to
+	 * @param string  $backgroundColor The background colour to use on padded sides (default white)
+	 * @param integer $transparencyPercent Level of transparency
 	 * @return Image_Backend
+	 * @deprecated 4.0 Generate methods are no longer applicable
 	 */
-	public function generatePad(Image_Backend $backend, $width, $height, $backgroundColor='FFFFFF') {
-		return $backend->paddedResize($width, $height, $backgroundColor);
+	public function generatePad(Image_Backend $backend, $width, $height, $backgroundColor = 'FFFFFF',
+		$transparencyPercent = 0
+	) {
+		Deprecation::notice('4.0', 'Generate methods are no longer applicable');
+		return $backend->paddedResize($width, $height, $backgroundColor, $transparencyPercent);
 	}
 
 	/**
 	 * Scale image proportionally by width. Use in templates with $ScaleWidth.
 	 *
 	 * @param integer $width The width to set
-	 * @return Image
+	 * @return Image|null
 	 */
 	public function ScaleWidth($width) {
 		return $this->isWidth($width) && !Config::inst()->get('Image', 'force_resample')
@@ -373,8 +387,10 @@ class Image extends File implements Flushable {
 	 * @param Image_Backend $backend
 	 * @param int $width The width to set
 	 * @return Image_Backend
+	 * @deprecated 4.0 Generate methods are no longer applicable
 	 */
 	public function generateScaleWidth(Image_Backend $backend, $width) {
+		Deprecation::notice('4.0', 'Generate methods are no longer applicable');
 		return $backend->resizeByWidth($width);
 	}
 
@@ -399,7 +415,7 @@ class Image extends File implements Flushable {
 	 * Scale image proportionally by height. Use in templates with $ScaleHeight.
 	 *
 	 * @param integer $height The height to set
-	 * @return Image
+	 * @return Image|null
 	 */
 	public function ScaleHeight($height) {
 		return $this->isHeight($height) && !Config::inst()->get('Image', 'force_resample')
@@ -413,8 +429,10 @@ class Image extends File implements Flushable {
 	 * @param Image_Backend $backend
 	 * @param integer $height The height to set
 	 * @return Image_Backend
+	 * @deprecated 4.0 Generate methods are no longer applicable
 	 */
 	public function generateScaleHeight(Image_Backend $backend, $height){
+		Deprecation::notice('4.0', 'Generate methods are no longer applicable');
 		return $backend->resizeByHeight($height);
 	}
 
@@ -491,10 +509,10 @@ class Image extends File implements Flushable {
 	 * @param integer $width The width to size within
 	 * @param integer $height The height to size within
 	 * @return Image_Backend
-	 * @deprecated 4.0 Use generateFit instead
+	 * @deprecated 4.0 Generate methods are no longer applicable
 	 */
 	public function generateSetRatioSize(Image_Backend $backend, $width, $height) {
-		Deprecation::notice('4.0', 'Use generateFit instead');
+		Deprecation::notice('4.0', 'Generate methods are no longer applicable');
 		return $backend->resizeRatio($width, $height);
 	}
 
@@ -516,10 +534,10 @@ class Image extends File implements Flushable {
 	 * @param Image_Backend $backend
 	 * @param int $width The width to set
 	 * @return Image_Backend
-	 * @deprecated 4.0 Use generateScaleWidth instead
+	 * @deprecated 4.0 Generate methods are no longer applicable
 	 */
 	public function generateSetWidth(Image_Backend $backend, $width) {
-		Deprecation::notice('4.0', 'Use generateScaleWidth instead');
+		Deprecation::notice('4.0', 'Generate methods are no longer applicable');
 		return $backend->resizeByWidth($width);
 	}
 
@@ -541,10 +559,10 @@ class Image extends File implements Flushable {
 	 * @param Image_Backend $backend
 	 * @param integer $height The height to set
 	 * @return Image_Backend
-	 * @deprecated 4.0 Use generateScaleHeight instead
+	 * @deprecated 4.0 Generate methods are no longer applicable
 	 */
 	public function generateSetHeight(Image_Backend $backend, $height){
-		Deprecation::notice('4.0', 'Use generateScaleHeight instead');
+		Deprecation::notice('4.0', 'Generate methods are no longer applicable');
 		return $backend->resizeByHeight($height);
 	}
 
@@ -569,46 +587,72 @@ class Image extends File implements Flushable {
 	 * @param integer $width The width to size to
 	 * @param integer $height The height to size to
 	 * @return Image_Backend
-	 * @deprecated 4.0 Use generatePad instead
+	 * @deprecated 4.0 Generate methods are no longer applicable
 	 */
 	public function generateSetSize(Image_Backend $backend, $width, $height) {
-		Deprecation::notice('4.0', 'Use generatePad instead');
+		Deprecation::notice('4.0', 'Generate methods are no longer applicable');
 		return $backend->paddedResize($width, $height);
 	}
 
+	/**
+	 * Resize this image for the CMS. Use in templates with $CMSThumbnail
+	 *
+	 * @return Image_Cached|null
+	 */
 	public function CMSThumbnail() {
-		return $this->getFormattedImage('CMSThumbnail');
+		return $this->Pad($this->stat('cms_thumbnail_width'),$this->stat('cms_thumbnail_height'));
 	}
 
 	/**
 	 * Resize this image for the CMS. Use in templates with $CMSThumbnail.
+	 *
 	 * @return Image_Backend
+	 * @deprecated 4.0 Generate methods are no longer applicable
 	 */
 	public function generateCMSThumbnail(Image_Backend $backend) {
+		Deprecation::notice('4.0', 'Generate methods are no longer applicable');
 		return $backend->paddedResize($this->stat('cms_thumbnail_width'),$this->stat('cms_thumbnail_height'));
 	}
 
 	/**
 	 * Resize this image for preview in the Asset section. Use in templates with $AssetLibraryPreview.
+	 *
 	 * @return Image_Backend
+	 * @deprecated 4.0 Generate methods are no longer applicable
 	 */
 	public function generateAssetLibraryPreview(Image_Backend $backend) {
+		Deprecation::notice('4.0', 'Generate methods are no longer applicable');
 		return $backend->paddedResize($this->stat('asset_preview_width'),$this->stat('asset_preview_height'));
 	}
 
 	/**
 	 * Resize this image for thumbnail in the Asset section. Use in templates with $AssetLibraryThumbnail.
+	 *
 	 * @return Image_Backend
+	 * @deprecated 4.0 Generate methods are no longer applicable
 	 */
 	public function generateAssetLibraryThumbnail(Image_Backend $backend) {
+		Deprecation::notice('4.0', 'Generate methods are no longer applicable');
 		return $backend->paddedResize($this->stat('asset_thumbnail_width'),$this->stat('asset_thumbnail_height'));
 	}
 
 	/**
 	 * Resize this image for use as a thumbnail in a strip. Use in templates with $StripThumbnail.
+	 *
+	 * @return Image_Cached|null
+	 */
+	public function StripThumbnail() {
+		return $this->Fill($this->stat('strip_thumbnail_width'),$this->stat('strip_thumbnail_height'));
+	}
+
+	/**
+	 * Resize this image for use as a thumbnail in a strip. Use in templates with $StripThumbnail.
+	 *
 	 * @return Image_Backend
+	 * @deprecated 4.0 Generate methods are no longer applicable
 	 */
 	public function generateStripThumbnail(Image_Backend $backend) {
+		Deprecation::notice('4.0', 'Generate methods are no longer applicable');
 		return $backend->croppedResize($this->stat('strip_thumbnail_width'),$this->stat('strip_thumbnail_height'));
 	}
 
@@ -618,12 +662,13 @@ class Image extends File implements Flushable {
 	 *
 	 * @param integer $width The width to size to
 	 * @param integer $height The height to size to
+	 * @param integer $transparencyPercent Level of transparency
 	 * @return Image
 	 * @deprecated 4.0 Use Pad instead
 	 */
-	public function PaddedImage($width, $height, $backgroundColor='FFFFFF') {
+	public function PaddedImage($width, $height, $backgroundColor='FFFFFF', $transparencyPercent = 0) {
 		Deprecation::notice('4.0', 'Use Pad instead');
-		return $this->Pad($width, $height, $backgroundColor);
+		return $this->Pad($width, $height, $backgroundColor, $transparencyPercent);
 	}
 
 	/**
@@ -632,12 +677,13 @@ class Image extends File implements Flushable {
 	 * @param Image_Backend $backend
 	 * @param integer $width The width to size to
 	 * @param integer $height The height to size to
+	 * @param integer $transparencyPercent Level of transparency
 	 * @return Image_Backend
-	 * @deprecated 4.0 Use generatePad instead
+	 * @deprecated 4.0 Generate methods are no longer applicable
 	 */
-	public function generatePaddedImage(Image_Backend $backend, $width, $height, $backgroundColor='FFFFFF') {
-		Deprecation::notice('4.0', 'Use generatePad instead');
-		return $backend->paddedResize($width, $height, $backgroundColor);
+	public function generatePaddedImage(Image_Backend $backend, $width, $height, $backgroundColor = 'FFFFFF', $transparencyPercent = 0) {
+		Deprecation::notice('4.0', 'Generate methods are no longer applicable');
+		return $backend->paddedResize($width, $height, $backgroundColor, $transparencyPercent);
 	}
 
 	/**
@@ -679,7 +725,7 @@ class Image extends File implements Flushable {
 	 * Just pass the correct number of parameters expected by the working function
 	 *
 	 * @param string $format The name of the format.
-	 * @return Image_Cached
+	 * @return Image_Cached|null
 	 */
 	public function getFormattedImage($format) {
 		$args = func_get_args();
@@ -691,7 +737,7 @@ class Image extends File implements Flushable {
 				call_user_func_array(array($this, "generateFormattedImage"), $args);
 			}
 
-			$cached = new Image_Cached($cacheFile, false, $this);
+			$cached = Injector::inst()->createWithArgs('Image_Cached', array($cacheFile, false, $this));
 			return $cached;
 		}
 	}
@@ -789,7 +835,7 @@ class Image extends File implements Flushable {
 	 * @param Image_Backend $backend
 	 * @param integer $width Width to resize to
 	 * @param integer $height Height to resize to
-	 * @return Image_Backend
+	 * @return Image_Backend|null
 	 */
 	public function generateResizedImage(Image_Backend $backend, $width, $height) {
 		if(!$backend){
@@ -822,10 +868,10 @@ class Image extends File implements Flushable {
 	 * @param integer $width Width to crop to
 	 * @param integer $height Height to crop to
 	 * @return Image_Backend
-	 * @deprecated 4.0 Use generateFill instead
+	 * @deprecated 4.0 Generate methods are no longer applicable
 	 */
 	public function generateCroppedImage(Image_Backend $backend, $width, $height) {
-		Deprecation::notice('4.0', 'Use generateFill instead');
+		Deprecation::notice('4.0', 'Generate methods are no longer applicable');
 		return $backend->croppedResize($width, $height);
 	}
 
@@ -879,7 +925,7 @@ class Image extends File implements Flushable {
 		// (if chained, they contain the transformations in the correct order)
 		foreach($cachedFiles as $cf_path) {
 			preg_match_all($pattern['GeneratorPattern'], $cf_path, $matches, PREG_SET_ORDER);
-			
+
 			$generatorArray = array();
 			foreach ($matches as $singleMatch) {
 				$generatorArray[] = array(
@@ -955,7 +1001,7 @@ class Image extends File implements Flushable {
 	 * Get the dimensions of this Image.
 	 * @param string $dim If this is equal to "string", return the dimensions in string form,
 	 * if it is 0 return the height, if it is 1 return the width.
-	 * @return string|int
+	 * @return string|int|null
 	 */
 	public function getDimensions($dim = "string") {
 		if($this->getField('Filename')) {
@@ -1008,7 +1054,9 @@ class Image extends File implements Flushable {
 	}
 
 	protected function onBeforeDelete() {
-		$backend = Injector::inst()->create(self::get_backend());
+		$backend = Injector::inst()->createWithArgs(self::config()->backend, array(
+			Director::baseFolder()."/" . $this->Filename
+		));
 		$backend->onBeforeDelete($this);
 
 		$this->deleteFormattedImages();
@@ -1035,7 +1083,12 @@ class Image_Cached extends Image {
 	 */
 	public function __construct($filename = null, $isSingleton = false, Image $sourceImage = null) {
 		parent::__construct(array(), $isSingleton);
-		if ($sourceImage) $this->update($sourceImage->toMap());
+		if ($sourceImage) {
+			// Copy properties from source image, except unsafe ones
+			$properties = $sourceImage->toMap();
+			unset($properties['RecordClassName'], $properties['ClassName']);
+			$this->update($properties);
+		}
 		$this->ID = -1;
 		$this->Filename = $filename;
 	}

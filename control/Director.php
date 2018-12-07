@@ -122,7 +122,7 @@ class Director implements TemplateGlobalProvider {
 				: $_SERVER['REQUEST_METHOD'],
 			$url,
 			$_GET,
-			ArrayLib::array_merge_recursive((array)$_POST, (array)$_FILES),
+			ArrayLib::array_merge_recursive((array) $_POST, (array) $_FILES),
 			@file_get_contents('php://input')
 		);
 
@@ -222,7 +222,7 @@ class Director implements TemplateGlobalProvider {
 
 		// These are needed so that calling Director::test() doesnt muck with whoever is calling it.
 		// Really, it's some inappropriate coupling and should be resolved by making less use of statics
-		$oldStage = Versioned::current_stage();
+		$oldMode = Versioned::get_reading_mode();
 		$getVars = array();
 
 		if(!$httpMethod) $httpMethod = ($postVars || is_array($postVars)) ? "POST" : "GET";
@@ -248,7 +248,7 @@ class Director implements TemplateGlobalProvider {
 		// Set callback to invoke prior to return
 		$onCleanup = function() use(
 			$existingRequestVars, $existingGetVars, $existingPostVars, $existingSessionVars,
-			$existingCookies, $existingServer, $existingRequirementsBackend, $oldStage
+			$existingCookies, $existingServer, $existingRequirementsBackend, $oldMode
 		) {
 			// Restore the superglobals
 			$_REQUEST = $existingRequestVars;
@@ -262,7 +262,7 @@ class Director implements TemplateGlobalProvider {
 
 			// These are needed so that calling Director::test() doesnt muck with whoever is calling it.
 			// Really, it's some inappropriate coupling and should be resolved by making less use of statics
-			Versioned::reading_stage($oldStage);
+			Versioned::set_reading_mode($oldMode);
 
 			Injector::unnest(); // Restore old CookieJar, etc
 			Config::unnest();
@@ -295,9 +295,9 @@ class Director implements TemplateGlobalProvider {
 		}
 
 		// Replace the superglobals with appropriate test values
-		$_REQUEST = ArrayLib::array_merge_recursive((array)$getVars, (array)$postVars);
-		$_GET = (array)$getVars;
-		$_POST = (array)$postVars;
+		$_REQUEST = ArrayLib::array_merge_recursive((array) $getVars, (array) $postVars);
+		$_GET = (array) $getVars;
+		$_POST = (array) $postVars;
 		$_SESSION = $session ? $session->inst_getAll() : array();
 		$_COOKIE = $cookieJar->getAll(false);
 		Injector::inst()->registerService($cookieJar, 'Cookie_Backend');
@@ -386,7 +386,14 @@ class Director implements TemplateGlobalProvider {
 					} catch(SS_HTTPResponse_Exception $responseException) {
 						$result = $responseException->getResponse();
 					}
-					if(!is_object($result) || $result instanceof SS_HTTPResponse) return $result;
+					// Ensure cache headers are added
+					if ($result instanceof SS_HTTPResponse) {
+						HTTP::add_cache_headers($result);
+						return $result;
+					}
+					if(!is_object($result)) {
+						return $result;
+					}
 
 					user_error("Bad result from url " . $request->getURL() . " handled by " .
 						get_class($controllerObj)." controller: ".get_class($result), E_USER_WARNING);
@@ -442,7 +449,7 @@ class Director implements TemplateGlobalProvider {
 		if ($url == '.' || $url == './') {
 			$url = '';
 		}
-		
+
 		if(strpos($url,'/') === false && !$relativeToSiteBase) {
 			//if there's no URL we want to force a trailing slash on the link
 			if (!$url) {
@@ -507,28 +514,28 @@ class Director implements TemplateGlobalProvider {
 	 */
 	public static function is_https() {
 		$return = false;
+
+		// See https://en.wikipedia.org/wiki/List_of_HTTP_header_fields
+		// See https://support.microsoft.com/?kbID=307347
+		$headerOverride = false;
+		if(TRUSTED_PROXY) {
+			$headers = (defined('SS_TRUSTED_PROXY_PROTOCOL_HEADER')) ? array(SS_TRUSTED_PROXY_PROTOCOL_HEADER) : null;
+			if(!$headers) {
+				// Backwards compatible defaults
+				$headers = array('HTTP_X_FORWARDED_PROTO', 'HTTP_X_FORWARDED_PROTOCOL', 'HTTP_FRONT_END_HTTPS');
+			}
+			foreach($headers as $header) {
+				$headerCompareVal = ($header === 'HTTP_FRONT_END_HTTPS' ? 'on' : 'https');
+				if(!empty($_SERVER[$header]) && strtolower($_SERVER[$header]) == $headerCompareVal) {
+					$headerOverride = true;
+					break;
+				}
+			}
+		}
+
 		if ($protocol = Config::inst()->get('Director', 'alternate_protocol')) {
 			$return = ($protocol == 'https');
-		} else if(
-			TRUSTED_PROXY
-			&& isset($_SERVER['HTTP_X_FORWARDED_PROTO'])
-			&& strtolower($_SERVER['HTTP_X_FORWARDED_PROTO']) == 'https'
-		) {
-			// Convention for (non-standard) proxy signaling a HTTPS forward,
-			// see https://en.wikipedia.org/wiki/List_of_HTTP_header_fields
-			$return = true;
-		} else if(
-			TRUSTED_PROXY
-			&& isset($_SERVER['HTTP_X_FORWARDED_PROTOCOL'])
-			&& strtolower($_SERVER['HTTP_X_FORWARDED_PROTOCOL']) == 'https'
-		) {
-			// Less conventional proxy header
-			$return = true;
-		} else if(
-			isset($_SERVER['HTTP_FRONT_END_HTTPS'])
-			&& strtolower($_SERVER['HTTP_FRONT_END_HTTPS']) == 'on'
-		) {
-			// Microsoft proxy convention: https://support.microsoft.com/?kbID=307347
+		} else if($headerOverride) {
 			$return = true;
 		} else if((!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] != 'off')) {
 			$return = true;
@@ -810,9 +817,13 @@ class Director implements TemplateGlobalProvider {
 	/**
 	 * Skip any further processing and immediately respond with a redirect to the passed URL.
 	 *
-	 * @param string $destURL - The URL to redirect to
+	 * @param string $destURL The URL to redirect to
+	 * @return string URL redirected to if on CLI
 	 */
 	protected static function force_redirect($destURL) {
+		if (static::is_cli()) {
+			return $destURL;
+		}
 		$response = new SS_HTTPResponse();
 		$response->redirect($destURL, 301);
 
@@ -859,9 +870,6 @@ class Director implements TemplateGlobalProvider {
 		$matched = false;
 
 		if($patterns) {
-			// Calling from the command-line?
-			if(!isset($_SERVER['REQUEST_URI'])) return;
-
 			$relativeURL = self::makeRelative(Director::absoluteURL($_SERVER['REQUEST_URI']));
 
 			// protect portions of the site based on the pattern
@@ -887,12 +895,7 @@ class Director implements TemplateGlobalProvider {
 
 			$destURL = str_replace('http:', 'https:', Director::absoluteURL($url));
 
-			// This coupling to SapphireTest is necessary to test the destination URL and to not interfere with tests
-			if(class_exists('SapphireTest', false) && SapphireTest::is_running_test()) {
-				return $destURL;
-			} else {
-				self::force_redirect($destURL);
-			}
+			return self::force_redirect($destURL);
 		} else {
 			return false;
 		}
@@ -914,6 +917,9 @@ class Director implements TemplateGlobalProvider {
 	 * Checks if the current HTTP-Request is an "Ajax-Request"
 	 * by checking for a custom header set by jQuery or
 	 * wether a manually set request-parameter 'ajax' is present.
+	 *
+	 * Note that if you plan to use this to alter your HTTP response on a cached page,
+	 * you should add X-Requested-With to the Vary header.
 	 *
 	 * @return boolean
 	 */

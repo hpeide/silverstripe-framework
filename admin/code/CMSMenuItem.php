@@ -11,7 +11,7 @@
  * @package framework
  * @subpackage admin
  */
-class CMSMenuItem extends Object {
+class CMSMenuItem extends SS_Object {
 
 	/**
 	 * The (translated) menu title
@@ -41,7 +41,7 @@ class CMSMenuItem extends Object {
 	 * Attributes for the link. For instance, custom data attributes or standard
 	 * HTML anchor properties.
 	 *
-	 * @var string
+	 * @var array
 	 */
 	protected $attributes = array();
 

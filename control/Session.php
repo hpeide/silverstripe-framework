@@ -145,15 +145,7 @@ class Session {
 		if($data instanceof Session) $data = $data->inst_getAll();
 
 		$this->data = $data;
-
-		if (isset($this->data['HTTP_USER_AGENT'])) {
-			if ($this->data['HTTP_USER_AGENT'] != $this->userAgent()) {
-				// Funny business detected!
-				$this->inst_clearAll();
-				$this->inst_destroy();
-				$this->inst_start();
-			}
-		}
+		$this->expireIfInvalid();
 	}
 
 	/**
@@ -359,6 +351,15 @@ class Session {
 		$path = Config::inst()->get('Session', 'cookie_path');
 		if(!$path) $path = Director::baseURL();
 		$domain = Config::inst()->get('Session', 'cookie_domain');
+		// Director::baseURL can return absolute domain names - this extracts the relevant parts
+		// for the session otherwise we can get broken session cookies
+		if (Director::is_absolute_url($path)) {
+			$urlParts = parse_url($path);
+			$path = $urlParts['path'];
+			if (!$domain) {
+				$domain = $urlParts['host'];
+			}
+		}
 		$secure = Director::is_https() && Config::inst()->get('Session', 'cookie_secure');
 		$session_path = Config::inst()->get('Session', 'session_store_path');
 		$timeout = Config::inst()->get('Session', 'timeout');
@@ -382,6 +383,9 @@ class Session {
 
 			$this->data = isset($_SESSION) ? $_SESSION : array();
 		}
+
+		// Ensure session is validated on start
+		$this->expireIfInvalid();
 
 		// Modify the timeout behaviour so it's the *inactive* time before the session expires.
 		// By default it's the total session lifetime
@@ -612,7 +616,7 @@ class Session {
 	 */
 	public static function set_timeout($timeout) {
 		Deprecation::notice('4.0', 'Use the "Session.timeout" config setting instead');
-		Config::inst()->update('Session', 'timeout', (int)$timeout);
+		Config::inst()->update('Session', 'timeout', (int) $timeout);
 	}
 
 	/**
@@ -621,5 +625,32 @@ class Session {
 	public static function get_timeout() {
 		Deprecation::notice('4.0', 'Use the "Session.timeout" config setting instead');
 		return Config::inst()->get('Session', 'timeout');
+	}
+
+	/**
+	 * Validate the user agent against the current data, resetting the
+	 * current session if a mismatch is detected.
+	 *
+	 * @deprecated 3.0..4.0 Removed in 4.0
+	 * @return bool If user agent has been set against this session, returns
+	 * the valid state of this session as either true or false. If the agent
+	 * isn't set it is assumed valid and returns true.
+	 */
+	private function expireIfInvalid() {
+		// If not set, indeterminable; Assume true as safe default
+		if (!isset($this->data['HTTP_USER_AGENT'])) {
+			return true;
+		}
+
+		// Agents match, deterministically true
+		if ($this->data['HTTP_USER_AGENT'] === $this->userAgent()) {
+			return true;
+		}
+
+		// Funny business detected!
+		$this->inst_clearAll();
+		$this->inst_destroy();
+		$this->inst_start();
+		return false;
 	}
 }

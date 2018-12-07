@@ -23,8 +23,11 @@ class DataListTest extends SapphireTest {
 		'DataObjectTest_EquipmentCompany',
 		'DataObjectTest_SubEquipmentCompany',
 		'DataObjectTest\NamespacedClass',
+		'DataObjectTest_Sortable',
 		'DataObjectTest_Company',
 		'DataObjectTest_Fan',
+		'ManyManyListTest_Product',
+		'ManyManyListTest_Category',
 	);
 
 	public function testFilterDataObjectByCreatedDate() {
@@ -166,7 +169,8 @@ class DataListTest extends SapphireTest {
 			. 'CASE WHEN "DataObjectTest_TeamComment"."ClassName" IS NOT NULL '
 			. 'THEN "DataObjectTest_TeamComment"."ClassName" ELSE '
 			. $db->quoteString('DataObjectTest_TeamComment')
-			. ' END AS "RecordClassName" FROM "DataObjectTest_TeamComment"';
+			. ' END AS "RecordClassName" FROM "DataObjectTest_TeamComment"'
+			. ' ORDER BY "DataObjectTest_TeamComment"."Name" ASC';
 		$this->assertSQLEquals($expected, $list->sql($parameters));
 	}
 
@@ -189,7 +193,9 @@ class DataListTest extends SapphireTest {
 			. $db->quoteString('DataObjectTest_TeamComment')
 			. ' END AS "RecordClassName" FROM "DataObjectTest_TeamComment" INNER JOIN '
 			. '"DataObjectTest_Team" AS "Team" ON "DataObjectTest_Team"."ID" = '
-			. '"DataObjectTest_TeamComment"."TeamID"';
+			. '"DataObjectTest_TeamComment"."TeamID"'
+			. ' ORDER BY "DataObjectTest_TeamComment"."Name" ASC';
+
 
 		$this->assertSQLEquals($expected, $list->sql($parameters));
 		$this->assertEmpty($parameters);
@@ -197,7 +203,7 @@ class DataListTest extends SapphireTest {
 
 	public function testInnerJoinParameterised() {
 		$db = DB::get_conn();
-		
+
 		$list = DataObjectTest_TeamComment::get();
 		$list = $list->innerJoin(
 			'DataObjectTest_Team',
@@ -218,7 +224,8 @@ class DataListTest extends SapphireTest {
 			. ' END AS "RecordClassName" FROM "DataObjectTest_TeamComment" INNER JOIN '
 			. '"DataObjectTest_Team" AS "Team" ON "DataObjectTest_Team"."ID" = '
 			. '"DataObjectTest_TeamComment"."TeamID" '
-			. 'AND "DataObjectTest_Team"."Title" LIKE ?';
+			. 'AND "DataObjectTest_Team"."Title" LIKE ?'
+			. ' ORDER BY "DataObjectTest_TeamComment"."Name" ASC';
 
 		$this->assertSQLEquals($expected, $list->sql($parameters));
 		$this->assertEquals(array('Team%'), $parameters);
@@ -242,7 +249,9 @@ class DataListTest extends SapphireTest {
 			. 'THEN "DataObjectTest_TeamComment"."ClassName" ELSE '
 			. $db->quoteString('DataObjectTest_TeamComment')
 			. ' END AS "RecordClassName" FROM "DataObjectTest_TeamComment" LEFT JOIN "DataObjectTest_Team" '
-			. 'AS "Team" ON "DataObjectTest_Team"."ID" = "DataObjectTest_TeamComment"."TeamID"';
+			. 'AS "Team" ON "DataObjectTest_Team"."ID" = "DataObjectTest_TeamComment"."TeamID"'
+			. ' ORDER BY "DataObjectTest_TeamComment"."Name" ASC';
+
 
 		$this->assertSQLEquals($expected, $list->sql($parameters));
 		$this->assertEmpty($parameters);
@@ -266,7 +275,8 @@ class DataListTest extends SapphireTest {
 			. 'ELSE ' . $db->quoteString('DataObjectTest_TeamComment') . ' END AS "RecordClassName" '
 			. 'FROM "DataObjectTest_TeamComment" '
 			. 'LEFT JOIN "DataObjectTest\NamespacedClass" ON '
-			. '"DataObjectTest\NamespacedClass"."ID" = "DataObjectTest_TeamComment"."ID"';
+			. '"DataObjectTest\NamespacedClass"."ID" = "DataObjectTest_TeamComment"."ID"'
+			. ' ORDER BY "DataObjectTest_TeamComment"."Name" ASC';
 		$this->assertSQLEquals($expected, $list->sql($parameters), 'Retains backslashes in namespaced classes');
 		$this->assertEmpty($parameters);
 
@@ -295,7 +305,8 @@ class DataListTest extends SapphireTest {
 			. ' END AS "RecordClassName" FROM "DataObjectTest_TeamComment" LEFT JOIN '
 			. '"DataObjectTest_Team" AS "Team" ON "DataObjectTest_Team"."ID" = '
 			. '"DataObjectTest_TeamComment"."TeamID" '
-			. 'AND "DataObjectTest_Team"."Title" LIKE ?';
+			. 'AND "DataObjectTest_Team"."Title" LIKE ?'
+			. ' ORDER BY "DataObjectTest_TeamComment"."Name" ASC';
 
 		$this->assertSQLEquals($expected, $list->sql($parameters));
 		$this->assertEquals(array('Team%'), $parameters);
@@ -352,6 +363,24 @@ class DataListTest extends SapphireTest {
 		$this->assertEquals($otherExpected, $otherMap);
 	}
 
+	public function testAmbiguousAggregate() {
+		// Test that we avoid ambiguity error when a field exists on two joined tables
+		// Fetch the sponsors in a round-about way to simulate this
+		$teamID = $this->idFromFixture('DataObjectTest_Team','team2');
+		$sponsors = DataObjectTest_EquipmentCompany::get()->filter('SponsoredTeams.ID', $teamID);
+		$this->assertNotNull($sponsors->Max('ID'));
+		$this->assertNotNull($sponsors->Min('ID'));
+		$this->assertNotNull($sponsors->Avg('ID'));
+		$this->assertNotNull($sponsors->Sum('ID'));
+
+		// Test non-orm many_many_extraFields
+		$company = $this->objFromFixture('DataObjectTest_EquipmentCompany', 'equipmentcompany1');
+		$this->assertNotNull($company->SponsoredTeams()->Max('SponsorFee'));
+		$this->assertNotNull($company->SponsoredTeams()->Min('SponsorFee'));
+		$this->assertNotNull($company->SponsoredTeams()->Avg('SponsorFee'));
+		$this->assertNotNull($company->SponsoredTeams()->Sum('SponsorFee'));
+	}
+
 	public function testEach() {
 		$list = DataObjectTest_TeamComment::get();
 
@@ -392,6 +421,21 @@ class DataListTest extends SapphireTest {
 		// byID() returns a DataObject, rather than a DataList
 		$this->assertInstanceOf('DataObjectTest_Team', $team);
 		$this->assertEquals('Team 2', $team->Title);
+
+		// Assert that filtering on ID searches by the base table, not the child table field
+		$query = DataObjectTest_SubTeam::get()->filter('ID', 4)->sql($parameters);
+		$this->assertContains('WHERE ("DataObjectTest_Team"."ID" = ?)', $query);
+		$this->assertNotContains('WHERE ("DataObjectTest_SubTeam"."ID" = ?)', $query);
+	}
+
+	public function testByIDs() {
+		$knownIDs = $this->allFixtureIDs('DataObjectTest_Player');
+		$removedID = array_pop($knownIDs);
+		$filteredPlayers = DataObjectTest_Player::get()->byIDs($knownIDs);
+		foreach ($filteredPlayers as $player) {
+			$this->assertContains($player->ID, $knownIDs);
+			$this->assertNotEquals($removedID, $player->ID);
+		}
 	}
 
 	/**
@@ -506,6 +550,66 @@ class DataListTest extends SapphireTest {
 		$list = $list->sort(array('TeamID'=>'asc','Name'=>'desc'));
 		$this->assertEquals('Joe', $list->first()->Name, 'First comment should be from Bob');
 		$this->assertEquals('Phil', $list->last()->Name, 'Last comment should be from Phil');
+	}
+
+	public function testSortNumeric() {
+		$list = DataObjectTest_Sortable::get();
+		$list1 = $list->sort('Sort', 'ASC');
+		$this->assertEquals(array(
+			-10,
+			-2,
+			-1,
+			0,
+			1,
+			2,
+			10
+		), $list1->column('Sort'));
+	}
+
+	public function testSortMixedCase() {
+		$list = DataObjectTest_Sortable::get();
+		$list1 = $list->sort('Name', 'ASC');
+		$this->assertEquals(array(
+            'Bob',
+            'bonny',
+            'jane',
+            'John',
+            'sam',
+            'Steve',
+            'steven'
+		), $list1->column('Name'));
+	}
+
+	/**
+	 * Test DataList->canFilterBy()
+	 */
+	public function testCanFilterBy() {
+		// Basic check
+		$team = DataObjectTest_Team::get();
+		$this->assertTrue($team->canFilterBy("Title"));
+		$this->assertFalse($team->canFilterBy("SomethingElse"));
+
+		// Has one
+		$this->assertTrue($team->canFilterBy("CaptainID"));
+		$this->assertTrue($team->canFilterBy("Captain.ShirtNumber"));
+		$this->assertFalse($team->canFilterBy("SomethingElse.ShirtNumber"));
+		$this->assertFalse($team->canFilterBy("Captain.SomethingElse"));
+		$this->assertTrue($team->canFilterBy("Captain.FavouriteTeam.Captain.ShirtNumber"));
+
+		// Has many
+		$this->assertTrue($team->canFilterBy("Fans.Name"));
+		$this->assertFalse($team->canFilterBy("SomethingElse.Name"));
+		$this->assertFalse($team->canFilterBy("Fans.SomethingElse"));
+
+		// Many many
+		$this->assertTrue($team->canFilterBy("Players.FirstName"));
+		$this->assertFalse($team->canFilterBy("SomethingElse.FirstName"));
+		$this->assertFalse($team->canFilterBy("Players.SomethingElse"));
+
+		// Subclasses
+		$subteam = DataObjectTest_SubTeam::get();
+		$this->assertTrue($subteam->canFilterBy("Title"));
+		$this->assertTrue($subteam->canFilterBy("SubclassDatabaseField"));
 	}
 
 	/**
@@ -668,6 +772,15 @@ class DataListTest extends SapphireTest {
 		$list = DataObjectTest_TeamComment::get();
 		$list = $list->filterAny('Name', 'Bob');
 		$this->assertEquals(1, $list->count());
+	}
+
+	public function testFilterAnyWithRelation() {
+		$list = DataObjectTest_Player::get();
+		$list = $list->filterAny(array(
+			'Teams.Title:StartsWith' => 'Team',
+			'ID:GreaterThan' => 0,
+		));
+		$this->assertCount(4, $list);
 	}
 
 	public function testFilterAnyMultipleArray() {
@@ -882,6 +995,26 @@ class DataListTest extends SapphireTest {
 		$sql = $list->sql($parameters);
 		$this->assertSQLContains('WHERE (("DataObjectTest_TeamComment"."Name" >= ?))', $sql);
 		$this->assertEquals(array('Bob'), $parameters);
+	}
+
+	/**
+	 * Test exact match filter with empty array items
+	 */
+	public function testEmptyFilter() {
+		$list = DataObjectTest_TeamComment::get();
+		$list = $list->exclude('Name', array());
+
+		$sql = $list->sql($parameters);
+		$this->assertSQLContains('WHERE (("DataObjectTest_TeamComment"."Name" NOT IN (?)))', $sql);
+		$this->assertEquals(array(''), $parameters);
+
+
+		$list = DataObjectTest_TeamComment::get();
+		$list = $list->filter('Name', array());
+
+		$sql = $list->sql($parameters);
+		$this->assertSQLContains('WHERE ("DataObjectTest_TeamComment"."Name" IN (?))', $sql);
+		$this->assertEquals(array(''), $parameters);
 	}
 
 	/**

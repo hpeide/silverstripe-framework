@@ -118,10 +118,22 @@ class Member extends DataObject implements TemplateGlobalProvider {
 		'Email',
 	);
 
+	/**
+	 * @config
+	 * @var array
+	 */
 	private static $summary_fields = array(
 		'FirstName',
 		'Surname',
 		'Email',
+	);
+
+	/**
+	 * @config
+	 * @var array
+	 */
+	private static $casting = array(
+		'Name' => 'Varchar',
 	);
 
 	/**
@@ -274,7 +286,11 @@ class Member extends DataObject implements TemplateGlobalProvider {
 
 		// Ensure this user is in the admin group
 		if(!$admin->inGroup($adminGroup)) {
-			$admin->Groups()->add($adminGroup);
+			// Add member to group instead of adding group to member
+			// This bypasses the privilege escallation code in Member_GroupSet
+			$adminGroup
+				->DirectMembers()
+				->add($admin);
 		}
 
 		return $admin;
@@ -308,15 +324,23 @@ class Member extends DataObject implements TemplateGlobalProvider {
 	/**
 	 * Check if the passed password matches the stored one (if the member is not locked out).
 	 *
-	 * @param  string $password
+	 * @param string $password
 	 * @return ValidationResult
 	 */
 	public function checkPassword($password) {
 		$result = $this->canLogIn();
 
 		// Short-circuit the result upon failure, no further checks needed.
-		if (!$result->valid()) return $result;
+		if (!$result->valid()) {
+			return $result;
+		}
 
+		// Allow default admin to login as self
+		if($this->isDefaultAdmin() && Security::check_default_admin($this->Email, $password)) {
+			return $result;
+		}
+
+		// Check a password is set on this member
 		if(empty($this->Password) && $this->exists()) {
 			$result->error(_t('Member.NoPassword','There is no password on this member.'));
 			return $result;
@@ -331,6 +355,16 @@ class Member extends DataObject implements TemplateGlobalProvider {
 		}
 
 		return $result;
+	}
+
+	/**
+	 * Check if this user is the currently configured default admin
+	 *
+	 * @return bool
+	 */
+	public function isDefaultAdmin() {
+		return Security::has_default_admin()
+			&& $this->Email === Security::default_admin_username();
 	}
 
 	/**
@@ -364,7 +398,44 @@ class Member extends DataObject implements TemplateGlobalProvider {
 	 * Returns true if this user is locked out
 	 */
 	public function isLockedOut() {
-		return $this->LockedOutUntil && time() < strtotime($this->LockedOutUntil);
+		$state = true;
+		if ($this->LockedOutUntil && $this->dbObject('LockedOutUntil')->InFuture()) {
+			$state = true;
+		} elseif ($this->config()->lock_out_after_incorrect_logins <= 0) {
+			$state = false;
+		} else {
+			$email = $this->{static::config()->unique_identifier_field};
+			$attempts = LoginAttempt::getByEmail($email)
+				->sort('Created', 'DESC')
+				->limit($this->config()->lock_out_after_incorrect_logins);
+
+			if ($attempts->count() < $this->config()->lock_out_after_incorrect_logins) {
+				$state = false;
+			} else {
+
+				$success = false;
+				foreach ($attempts as $attempt) {
+					if ($attempt->Status === 'Success') {
+						$success = true;
+						$state = false;
+						break;
+					}
+				}
+
+				if (!$success) {
+					$lockedOutUntil = $attempts->first()->dbObject('Created')->Format('U')
+					                  + ($this->config()->lock_out_delay_mins * 60);
+					if (SS_Datetime::now()->Format('U') < $lockedOutUntil) {
+						$state = true;
+					} else {
+						$state = false;
+					}
+				}
+			}
+		}
+
+		$this->extend('updateIsLockedOut', $state);
+		return $state;
 	}
 
 	/**
@@ -374,7 +445,7 @@ class Member extends DataObject implements TemplateGlobalProvider {
 	 * quirky problems (such as using the Windmill 0.3.6 proxy).
 	 */
 	public static function session_regenerate_id() {
-		if(!self::$session_regenerate_id) return;
+		if(!self::config()->session_regenerate_id) return;
 
 		// This can be called via CLI during testing.
 		if(Director::is_cli()) return;
@@ -468,7 +539,8 @@ class Member extends DataObject implements TemplateGlobalProvider {
 
 		$this->addVisit();
 
-		if($remember) {
+		// Only set the cookie if autologin is enabled
+		if($remember && Security::config()->autologin_enabled) {
 			// Store the hash and give the client the cookie with the token.
 			$generator = new RandomGenerator();
 			$token = $generator->randomToken('sha1');
@@ -551,7 +623,8 @@ class Member extends DataObject implements TemplateGlobalProvider {
 		// Don't bother trying this multiple times
 		self::$_already_tried_to_auto_log_in = true;
 
-		if(strpos(Cookie::get('alc_enc'), ':') === false
+		if(!Security::config()->autologin_enabled
+			|| strpos(Cookie::get('alc_enc'), ':') === false
 			|| Session::get("loggedInAs")
 			|| !Security::database_is_ready()
 		) {
@@ -559,6 +632,10 @@ class Member extends DataObject implements TemplateGlobalProvider {
 		}
 
 		list($uid, $token) = explode(':', Cookie::get('alc_enc'), 2);
+
+		if (!$uid || !$token) {
+			return;
+		}
 
 		$member = DataObject::get_by_id("Member", $uid);
 
@@ -726,14 +803,7 @@ class Member extends DataObject implements TemplateGlobalProvider {
 	public function getMemberFormFields() {
 		$fields = parent::getFrontendFields();
 
-		$fields->replaceField('Password', $password = new ConfirmedPasswordField (
-			'Password',
-			$this->fieldLabel('Password'),
-			null,
-			null,
-			(bool) $this->ID
-		));
-		$password->setCanBeEmpty(true);
+		$fields->replaceField('Password', $this->getMemberPasswordField());
 
 		$fields->replaceField('Locale', new DropdownField (
 			'Locale',
@@ -751,6 +821,36 @@ class Member extends DataObject implements TemplateGlobalProvider {
 	}
 
 	/**
+	 * Builds "Change / Create Password" field for this member
+	 *
+	 * @return ConfirmedPasswordField
+	 */
+	public function getMemberPasswordField() {
+		$editingPassword = $this->isInDB();
+		$label = $editingPassword
+			? _t('Member.EDIT_PASSWORD', 'New Password')
+			: $this->fieldLabel('Password');
+		/** @var ConfirmedPasswordField $password */
+		$password = ConfirmedPasswordField::create(
+			'Password',
+			$label,
+			null,
+			null,
+			$editingPassword
+		);
+
+		// If editing own password, require confirmation of existing
+		if($editingPassword && $this->ID == Member::currentUserID()) {
+			$password->setRequireExistingPassword(true);
+		}
+
+		$password->setCanBeEmpty(true);
+		$this->extend('updateMemberPasswordField', $password);
+		return $password;
+	}
+
+
+	/**
 	 * Returns the {@link RequiredFields} instance for the Member object. This
 	 * Validator is used when saving a {@link CMSProfileController} or added to
 	 * any form responsible for saving a users data.
@@ -762,6 +862,7 @@ class Member extends DataObject implements TemplateGlobalProvider {
 	 */
 	public function getValidator() {
 		$validator = Injector::inst()->create('Member_Validator');
+		$validator->setForMember($this);
 		$this->extend('updateValidator', $validator);
 
 		return $validator;
@@ -777,7 +878,7 @@ class Member extends DataObject implements TemplateGlobalProvider {
 		$id = Member::currentUserID();
 
 		if($id) {
-			return Member::get()->byId($id);
+			return DataObject::get_by_id('Member', $id) ?: null;
 		}
 	}
 
@@ -793,7 +894,7 @@ class Member extends DataObject implements TemplateGlobalProvider {
 			$id = Session::get("loggedInAs");
 		}
 
-		return is_numeric($id) ? $id : 0;
+		return is_numeric($id) ? (int) $id : 0;
 	}
 	private static $_already_tried_to_auto_log_in = false;
 
@@ -803,8 +904,10 @@ class Member extends DataObject implements TemplateGlobalProvider {
 	 * filesystem.
 	 *
 	 * @return string Returns a random password.
+	 * @deprecated 3.6.0..4.0.0
 	 */
 	public static function create_new_password() {
+		Deprecation::notice('4.0', 'Please use Security/lostpassword to reset a password');
 		$words = Config::inst()->get('Security', 'word_list');
 
 		if($words && file_exists($words)) {
@@ -820,7 +923,7 @@ class Member extends DataObject implements TemplateGlobalProvider {
 		} else {
 			$random = rand();
 			$string = md5($random);
-			$output = substr($string, 0, 6);
+			$output = substr($string, 0, 8);
 			return $output;
 		}
 	}
@@ -876,12 +979,14 @@ class Member extends DataObject implements TemplateGlobalProvider {
 		// Note that this only works with cleartext passwords, as we can't rehash
 		// existing passwords.
 		if((!$this->ID && $this->Password) || $this->isChanged('Password')) {
+			//reset salt so that it gets regenerated - this will invalidate any persistant login cookies
+			// or other information encrypted with this Member's settings (see self::encryptWithUserSettings)
+			$this->Salt = '';
 			// Password was changed: encrypt the password according the settings
 			$encryption_details = Security::encrypt_password(
 				$this->Password, // this is assumed to be cleartext
 				$this->Salt,
-				($this->PasswordEncryption) ?
-					$this->PasswordEncryption : Security::config()->password_encryption_algorithm,
+				$this->isChanged('PasswordEncryption') ? $this->PasswordEncryption : null,
 				$this
 			);
 
@@ -912,6 +1017,8 @@ class Member extends DataObject implements TemplateGlobalProvider {
 	public function onAfterWrite() {
 		parent::onAfterWrite();
 
+		Permission::flush_permission_cache();
+
 		if($this->isChanged('Password')) {
 			MemberPassword::log($this);
 		}
@@ -938,21 +1045,31 @@ class Member extends DataObject implements TemplateGlobalProvider {
 	}
 
 	/**
+	 * Filter out admin groups to avoid privilege escalation,
 	 * If any admin groups are requested, deny the whole save operation.
 	 *
 	 * @param Array $ids Database IDs of Group records
-	 * @return boolean
+	 * @return boolean True if the change can be accepted
 	 */
 	public function onChangeGroups($ids) {
-		// Filter out admin groups to avoid privilege escalation,
+		// Ensure none of these match disallowed list
+		$disallowedGroupIDs = $this->disallowedGroups();
+		return count(array_intersect($ids, $disallowedGroupIDs)) == 0;
+	}
+
+	/**
+	 * List of group IDs this user is disallowed from
+	 *
+	 * @return int[] List of group IDs
+	 */
+	public function disallowedGroups() {
 		// unless the current user is an admin already OR the logged in user is an admin
-		if(!(Permission::check('ADMIN') || Permission::checkMember($this, 'ADMIN'))) {
-			$adminGroups = Permission::get_groups_by_permission('ADMIN');
-			$adminGroupIDs = ($adminGroups) ? $adminGroups->column('ID') : array();
-			return count(array_intersect($ids, $adminGroupIDs)) == 0;
-		} else {
-			return true;
+		if (Permission::check('ADMIN') || Permission::checkMember($this, 'ADMIN')) {
+			return array();
 		}
+
+		// Non-admins may not belong to admin groups
+		return Permission::get_groups_by_permission('ADMIN')->column('ID');
 	}
 
 
@@ -1185,6 +1302,7 @@ class Member extends DataObject implements TemplateGlobalProvider {
 	 * Use {@link DirectGroups()} to only retrieve the group relations without inheritance.
 	 *
 	 * @todo Push all this logic into Member_GroupSet's getIterator()?
+	 * @return Member_Groupset
 	 */
 	public function Groups() {
 		$groups = Member_GroupSet::create('Group', 'Group_Members', 'GroupID', 'MemberID');
@@ -1332,19 +1450,12 @@ class Member extends DataObject implements TemplateGlobalProvider {
 		require_once 'Zend/Date.php';
 
 		$self = $this;
-		$this->beforeUpdateCMSFields(function($fields) use ($self) {
-			$mainFields = $fields->fieldByName("Root")->fieldByName("Main")->Children;
+		$this->beforeUpdateCMSFields(function(FieldList $fields) use ($self) {
+			/** @var FieldList $mainFields */
+			$mainFields = $fields->fieldByName("Root")->fieldByName("Main")->getChildren();
 
-			$password = new ConfirmedPasswordField(
-				'Password',
-				null,
-				null,
-				null,
-				true // showOnClick
-			);
-			$password->setCanBeEmpty(true);
-			if( ! $self->ID) $password->showOnClick = false;
-			$mainFields->replaceField('Password', $password);
+			// Build change password field
+			$mainFields->replaceField('Password', $self->getMemberPasswordField());
 
 			$mainFields->replaceField('Locale', new DropdownField(
 				"Locale",
@@ -1353,7 +1464,12 @@ class Member extends DataObject implements TemplateGlobalProvider {
 			));
 
 			$mainFields->removeByName($self->config()->hidden_fields);
+
+			// make sure that the "LastVisited" field exists
+			// it may have been removed using $self->config()->hidden_fields
+			if($mainFields->fieldByName("LastVisited")){
 			$mainFields->makeFieldReadonly('LastVisited');
+			}
 
 			if( ! $self->config()->lock_out_after_incorrect_logins) {
 				$mainFields->removeByName('FailedLoginCount');
@@ -1368,12 +1484,18 @@ class Member extends DataObject implements TemplateGlobalProvider {
 			$fields->removeByName('LoggedPasswords');
 
 			if(Permission::check('EDIT_PERMISSIONS')) {
-				$groupsMap = array();
-				foreach(Group::get() as $group) {
-					// Listboxfield values are escaped, use ASCII char instead of &raquo;
-					$groupsMap[$group->ID] = $group->getBreadcrumbs(' > ');
-				}
-				asort($groupsMap);
+                // Filter allowed groups
+                $groups = Group::get();
+                $disallowedGroupIDs = $self->disallowedGroups();
+                if ($disallowedGroupIDs) {
+                    $groups = $groups->exclude('ID', $disallowedGroupIDs);
+                }
+                $groupsMap = array();
+                foreach ($groups as $group) {
+                    // Listboxfield values are escaped, use ASCII char instead of &raquo;
+                    $groupsMap[$group->ID] = $group->getBreadcrumbs(' > ');
+                }
+                asort($groupsMap);
 				$fields->addFieldToTab('Root.Main',
 					ListboxField::create('DirectGroups', singleton('Group')->i18n_plural_name())
 						->setMultiple(true)
@@ -1552,7 +1674,7 @@ class Member extends DataObject implements TemplateGlobalProvider {
 	/**
 	 * Validate this member object.
 	 */
-	protected function validate() {
+	public function validate() {
 		$valid = parent::validate();
 
 		if(!$this->ID || $this->isChanged('Password')) {
@@ -1595,11 +1717,11 @@ class Member extends DataObject implements TemplateGlobalProvider {
 	public function registerFailedLogin() {
 		if(self::config()->lock_out_after_incorrect_logins) {
 			// Keep a tally of the number of failed log-ins so that we can lock people out
-			$this->FailedLoginCount = $this->FailedLoginCount + 1;
+			++$this->FailedLoginCount;
 
 			if($this->FailedLoginCount >= self::config()->lock_out_after_incorrect_logins) {
 				$lockoutMins = self::config()->lock_out_delay_mins;
-				$this->LockedOutUntil = date('Y-m-d H:i:s', time() + $lockoutMins*60);
+				$this->LockedOutUntil = date('Y-m-d H:i:s', SS_Datetime::now()->Format('U') + $lockoutMins*60);
 				$this->FailedLoginCount = 0;
 			}
 		}
@@ -1614,8 +1736,10 @@ class Member extends DataObject implements TemplateGlobalProvider {
 		if(self::config()->lock_out_after_incorrect_logins) {
 			// Forgive all past login failures
 			$this->FailedLoginCount = 0;
+			$this->LockedOutUntil = null;
 			$this->write();
 		}
+        $this->extend('onAfterRegisterSuccessfulLogin');
 	}
 	/**
 	 * Get the HtmlEditorConfig for this user to be used in the CMS.
@@ -1706,6 +1830,78 @@ class Member_GroupSet extends ManyManyList {
 		// in this class, otherwise we end up selecting all inherited groups
 		return parent::foreignIDFilter($id);
 	}
+
+	public function add($item, $extraFields = null) {
+		// Get Group.ID
+		$itemID = null;
+		if(is_numeric($item)) {
+			$itemID = $item;
+		} else if($item instanceof Group) {
+			$itemID = $item->ID;
+		}
+
+		// Check if this group is allowed to be added
+		if($this->canAddGroups(array($itemID))) {
+			parent::add($item, $extraFields);
+		}
+	}
+
+	public function removeAll() {
+		$base = ClassInfo::baseDataClass($this->dataClass());
+
+		// Remove the join to the join table to avoid MySQL row locking issues.
+		$query = $this->dataQuery();
+		$foreignFilter = $query->getQueryParam('Foreign.Filter');
+		$query->removeFilterOn($foreignFilter);
+
+		$selectQuery = $query->query();
+		$selectQuery->setSelect("\"{$base}\".\"ID\"");
+
+		$from = $selectQuery->getFrom();
+		unset($from[$this->joinTable]);
+		$selectQuery->setFrom($from);
+		$selectQuery->setOrderBy(); // ORDER BY in subselects breaks MS SQL Server and is not necessary here
+		$selectQuery->setDistinct(false);
+
+		// Use a sub-query as SQLite does not support setting delete targets in
+		// joined queries.
+		$delete = new SQLDelete();
+		$delete->setFrom("\"{$this->joinTable}\"");
+		// Use ManyManyList::foreignIDFilter() rather than the one in this class
+		// otherwise we end up selecting the wrong columns
+		$delete->addWhere(parent::foreignIDFilter());
+		$subSelect = $selectQuery->sql($parameters);
+		$delete->addWhere(array(
+			"\"{$this->joinTable}\".\"{$this->localKey}\" IN ($subSelect)" => $parameters
+		));
+		$delete->execute();
+	}
+
+	/**
+	 * Determine if the following groups IDs can be added
+	 *
+	 * @param array $itemIDs
+	 * @return boolean
+	 */
+	protected function canAddGroups($itemIDs) {
+		if(empty($itemIDs)) {
+			return true;
+		}
+		$member = $this->getMember();
+		return empty($member) || $member->onChangeGroups($itemIDs);
+	}
+
+	/**
+	 * Get foreign member record for this relation
+	 *
+	 * @return Member
+	 */
+	protected function getMember() {
+		$id = $this->getForeignID();
+		if($id) {
+			return DataObject::get_by_id('Member', $id);
+		}
+	}
 }
 
 /**
@@ -1752,21 +1948,39 @@ class Member_ForgotPasswordEmail extends Email {
  * Member Validator
  *
  * Custom validation for the Member object can be achieved either through an
- * {@link DataExtension} on the Member object or, by specifying a subclass of
+ * {@link DataExtension} on the Member_Validator object or, by specifying a subclass of
  * {@link Member_Validator} through the {@link Injector} API.
- *
+ * The Validator can also be modified by adding an Extension to Member and implement the
+ * <code>updateValidator</code> hook.
  * {@see Member::getValidator()}
+ *
+ * Additional required fields can also be set via config API, eg.
+ * <code>
+ * Member_Validator:
+ *   customRequired:
+ *     - Surname
+ * </code>
  *
  * @package framework
  * @subpackage security
  */
-class Member_Validator extends RequiredFields {
-
+class Member_Validator extends RequiredFields
+{
+	/**
+	 * Fields that are required by this validator
+	 * @config
+	 * @var array
+	 */
 	protected $customRequired = array(
 		'FirstName',
 		'Email'
 	);
 
+	/**
+	 * Determine what member this validator is meant for
+	 * @var Member
+	 */
+	protected $forMember = null;
 
 	/**
 	 * Constructor
@@ -1780,7 +1994,33 @@ class Member_Validator extends RequiredFields {
 
 		$required = array_merge($required, $this->customRequired);
 
-		parent::__construct($required);
+		// check for config API values and merge them in
+		$config = $this->config()->customRequired;
+		if(is_array($config)){
+			$required = array_merge($required, $config);
+		}
+
+		parent::__construct(array_unique($required));
+	}
+
+	/**
+	 * Get the member this validator applies to.
+	 * @return Member
+	 */
+	public function getForMember()
+	{
+		return $this->forMember;
+	}
+
+	/**
+	 * Set the Member this validator applies to.
+	 * @param Member $value
+	 * @return $this
+	 */
+	public function setForMember(Member $value)
+	{
+		$this->forMember = $value;
+		return $this;
 	}
 
 	/**
@@ -1793,47 +2033,54 @@ class Member_Validator extends RequiredFields {
 	 * @return bool Returns TRUE if the submitted data is valid, otherwise
 	 *              FALSE.
 	 */
-	public function php($data) {
+	public function php($data)
+	{
 		$valid = parent::php($data);
 
-		$identifierField = Member::config()->unique_identifier_field;
-		$member = DataObject::get_one('Member', array(
-			"\"$identifierField\"" => $data[$identifierField]
-		));
+		$identifierField = (string)Member::config()->unique_identifier_field;
 
-		// if we are in a complex table field popup, use ctf[childID], else use ID
-		if(isset($_REQUEST['ctf']['childID'])) {
-			$id = $_REQUEST['ctf']['childID'];
-		} elseif(isset($_REQUEST['ID'])) {
-			$id = $_REQUEST['ID'];
-		} else {
-			$id = null;
-		}
-
-		if($id && is_object($member) && $member->ID != $id) {
-			$uniqueField = $this->form->Fields()->dataFieldByName($identifierField);
-			$this->validationError(
-				$uniqueField->id(),
-				_t(
-					'Member.VALIDATIONMEMBEREXISTS',
-					'A member already exists with the same %s',
-					array('identifier' => strtolower($identifierField))
-				),
-				'required'
-			);
-			$valid = false;
-		}
-
-		// Execute the validators on the extensions
-		if($this->extension_instances) {
-			foreach($this->extension_instances as $extension) {
-				if(method_exists($extension, 'hasMethod') && $extension->hasMethod('updatePHP')) {
-					$valid &= $extension->updatePHP($data, $this->form);
+		// Only validate identifier field if it's actually set. This could be the case if
+		// somebody removes `Email` from the list of required fields.
+		if(isset($data[$identifierField])){
+			$id = isset($data['ID']) ? (int)$data['ID'] : 0;
+			if(!$id && ($ctrl = $this->form->getController())){
+				// get the record when within GridField (Member editing page in CMS)
+				if($ctrl instanceof GridFieldDetailForm_ItemRequest && $record = $ctrl->getRecord()){
+					$id = $record->ID;
 				}
+			}
+
+			// If there's no ID passed via controller or form-data, use the assigned member (if available)
+			if(!$id && ($member = $this->getForMember())){
+				$id = $member->exists() ? $member->ID : 0;
+			}
+
+			// set the found ID to the data array, so that extensions can also use it
+			$data['ID'] = $id;
+
+			$members = Member::get()->filter($identifierField, $data[$identifierField]);
+			if($id) {
+				$members = $members->exclude('ID', $id);
+			}
+
+			if($members->count() > 0) {
+				$this->validationError(
+					$identifierField,
+					_t(
+						'Member.VALIDATIONMEMBEREXISTS',
+						'A member already exists with the same {identifier}',
+						array('identifier' => Member::singleton()->fieldLabel($identifierField))
+					),
+					'required'
+				);
+				$valid = false;
 			}
 		}
 
-		return $valid;
-	}
 
+		// Execute the validators on the extensions
+		$results = $this->extend('updatePHP', $data, $this->form);
+		$results[] = $valid;
+		return min($results);
+	}
 }

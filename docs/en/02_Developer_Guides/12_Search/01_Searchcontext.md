@@ -11,7 +11,7 @@ The default output of a [api:SearchContext] is either a [api:SQLQuery] object fo
 [api:DataObject] instance.
 
 <div class="notice" markdown="1">
-[api:SearchContext] is mainly used by [ModelAdmin](../customising_the_admin_interface/modeladmin).
+[api:SearchContext] is mainly used by [ModelAdmin](/developer_guides/customising_the_admin_interface/modeladmin).
 </div>
 
 ## Usage
@@ -46,7 +46,7 @@ and `MyDate`. The attribute `HiddenProperty` should not be searchable, and `MyDa
 			'MyDate' => 'Date'
 		);
 		
-		public function getCustomSearchContext() {
+		public function getDefaultSearchContext() {
 			$fields = $this->scaffoldSearchFields(array(
 				'restrictFields' => array('PublicProperty','MyDate')
 			));
@@ -204,13 +204,13 @@ Results.PaginationSummary(4) defines how many pages the search will show in the 
 
 ## Available SearchFilters
 
-See `[api:SearchFilter]` API Documentation
+See [api:SearchFilter] API Documentation
 
 
 ## Related Documentation
 
-* [ModelAdmin](../customising_the_cms/modeladmin)
-* [Tutorial: Site Search](/tutorials/site_search)
+* [ModelAdmin](/developer_guides/customising_the_admin_interface/modeladmin)
+* [Site Search](/tutorials/site_search)
 
 ## API Documentation
 

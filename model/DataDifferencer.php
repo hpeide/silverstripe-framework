@@ -103,7 +103,7 @@ class DataDifferencer extends ViewableData {
 
 			// Show changes between the two, if any exist
 			if($fromValue != $toValue) {
-				$diffed->setField($field, Diff::compareHTML($fromValue, $toValue));
+				$diffed->setField($field, DBField::create_field('HTMLText', Diff::compareHTML($fromValue, $toValue)));
 			}
 		}
 
@@ -139,11 +139,11 @@ class DataDifferencer extends ViewableData {
 				if($this->fromRecord->hasMethod($relName)) {
 					$relObjFrom = $this->fromRecord->$relName();
 					if($relObjFrom) {
-						$fromTitle = ($relObjFrom->hasMethod('Title') || $relObjFrom->hasField('Title')) ? $relObjFrom->Title : '';	
+						$fromTitle = ($relObjFrom->hasMethod('Title') || $relObjFrom->hasField('Title')) ? $relObjFrom->Title : '';
 					} else {
 						$fromTitle = '';
 					}
-					
+
 				}
 				if(isset($relObjFrom) && $relObjFrom instanceof Image) {
 					// TODO Use CMSThumbnail (see above)

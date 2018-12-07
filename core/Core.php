@@ -112,8 +112,16 @@ if(file_exists(BASE_PATH . '/vendor/autoload.php')) {
 	require_once BASE_PATH . '/vendor/autoload.php';
 }
 
+// Int/Float autoloader for PHP5.6 backwards-compatability
+require_once(BASE_PATH . '/framework/model/fieldtypes/compat/autoload.php');
+
 // Now that the class manifest is up, load the static configuration
-$configManifest = new SS_ConfigStaticManifest(BASE_PATH, false, $flush);
+if (defined('SS_CONFIGSTATICMANIFEST')) {
+	$configManifest = SS_CONFIGSTATICMANIFEST;
+	$configManifest = new $configManifest(BASE_PATH, false, $flush);
+} else {
+	$configManifest = new SS_ConfigStaticManifest(BASE_PATH, false, $flush);
+}
 Config::inst()->pushConfigStaticManifest($configManifest);
 
 // And then the yaml configuration
@@ -121,7 +129,7 @@ $configManifest = new SS_ConfigManifest(BASE_PATH, false, $flush);
 Config::inst()->pushConfigYamlManifest($configManifest);
 
 // Load template manifest
-SS_TemplateLoader::instance()->pushManifest(new SS_TemplateManifest(
+SS_TemplateLoader::instance()->pushManifest(Injector::inst()->create('SS_TemplateManifest',
 	BASE_PATH, project(), false, $flush
 ));
 
@@ -150,7 +158,7 @@ Debug::loadErrorHandlers();
  * data (e.g. the custom SilverStripe static handling).
  *
  * @param string $className
- * @return Object
+ * @return SS_Object
  */
 function singleton($className) {
 	if($className == "Config") user_error("Don't pass Config to singleton()", E_USER_ERROR);

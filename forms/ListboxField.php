@@ -1,6 +1,6 @@
 <?php
 /**
- * Multi-line listbox field, created from a <select> tag.
+ * Multi-line listbox field, created from a select tag.
  *
  * <b>Usage</b>
  *
@@ -17,7 +17,7 @@
  * )
  * </code>
  *
- * @see DropdownField for a simple <select> field with a single element.
+ * @see DropdownField for a simple select field with a single element.
  * @see CheckboxSetField for multiple selections through checkboxes.
  * @see OptionsetField for single selections via radiobuttons.
  * @see TreeDropdownField for a rich and customizeable UI that can visualize a tree of selectable elements
@@ -69,7 +69,7 @@ class ListboxField extends DropdownField {
 	}
 
 	/**
-	 * Returns a <select> tag containing all the appropriate <option> tags
+	 * Returns a select tag containing all the appropriate option tags
 	 */
 	public function Field($properties = array()) {
 		if($this->multiple) $this->name .= '[]';
@@ -102,7 +102,7 @@ class ListboxField extends DropdownField {
 			'Options' => new ArrayList($options)
 		));
 
-		return $this->customise($properties)->renderWith($this->getTemplates());
+		return FormField::Field($properties);
 	}
 
 	public function getAttributes() {
@@ -136,8 +136,10 @@ class ListboxField extends DropdownField {
 	public function setSource($source) {
 		if($source) {
 			$hasCommas = array_filter(array_keys($source),
-				create_function('$key', 'return strpos($key, ",") !== FALSE;'));
-			if($hasCommas) {
+			function($key) {
+			    return strpos($key, ",") !== FALSE;
+			});
+			if(!empty($hasCommas)) {
 				throw new InvalidArgumentException('No commas allowed in $source keys');
 			}
 		}
@@ -182,12 +184,6 @@ class ListboxField extends DropdownField {
 			if($fieldname && $record && $relation &&
 				($relation instanceof RelationList || $relation instanceof UnsavedRelationList)) {
 				$idList = (is_array($this->value)) ? array_values($this->value) : array();
-				if(!$record->ID) {
-					$record->write(); // record needs to have an ID in order to set relationships
-					$relation = ($fieldname && $record && $record->hasMethod($fieldname))
-						? $record->$fieldname()
-						: null;
-				}
 				$relation->setByIDList($idList);
 			} elseif($fieldname && $record) {
 				if($this->value) {

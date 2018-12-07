@@ -8,6 +8,14 @@
 class MySQLiConnector extends DBConnector {
 
 	/**
+	 * Default strong SSL cipher to be used
+	 *
+	 * @config
+	 * @var string
+	 */
+	private static $ssl_cipher_default = 'DHE-RSA-AES256-SHA';
+
+	/**
 	 * Connection to the MySQL database
 	 *
 	 * @var MySQLi
@@ -56,36 +64,59 @@ class MySQLiConnector extends DBConnector {
 		// Normally $selectDB is set to false by the MySQLDatabase controller, as per convention
 		$selectedDB = ($selectDB && !empty($parameters['database'])) ? $parameters['database'] : null;
 
-		if(!empty($parameters['port'])) {
-			$this->dbConn = new MySQLi(
-				$parameters['server'],
-				$parameters['username'],
-				$parameters['password'],
-				$selectedDB,
-				$parameters['port']
+		// Connection charset and collation
+		$connCharset = Config::inst()->get('MySQLDatabase', 'connection_charset');
+		$connCollation = Config::inst()->get('MySQLDatabase', 'connection_collation');
+
+		$this->dbConn = mysqli_init();
+		
+		// Set SSL parameters if they exist. All parameters are required.
+
+		if(
+			array_key_exists('ssl_key', $parameters) &&
+			array_key_exists('ssl_cert', $parameters) &&
+			array_key_exists('ssl_ca', $parameters)) {
+
+			$this->dbConn->ssl_set(
+				$parameters['ssl_key'],
+				$parameters['ssl_cert'],
+				$parameters['ssl_ca'],
+				dirname($parameters['ssl_ca']),
+				array_key_exists('ssl_cipher', $parameters) ? $parameters['ssl_cipher'] : Config::inst()->get('MySQLiConnector', 'ssl_cipher_default')
 			);
-		} else {
-			$this->dbConn = new MySQLi(
-				$parameters['server'],
-				$parameters['username'],
-				$parameters['password'],
-				$selectedDB
-			);
+
 		}
+
+
+		$this->dbConn->real_connect(
+			$parameters['server'],
+			$parameters['username'],
+			$parameters['password'],
+			$selectedDB,
+			!empty($parameters['port']) ? $parameters['port'] : ini_get("mysqli.default_port")
+
+		);
 
 		if ($this->dbConn->connect_error) {
 			$this->databaseError("Couldn't connect to MySQL database | " . $this->dbConn->connect_error);
 		}
 
-		// Set charset if given and not null. Can explicitly set to empty string to omit
+		// Set charset and collation if given and not null. Can explicitly set to empty string to omit
 		$charset = isset($parameters['charset'])
 				? $parameters['charset']
-				: 'utf8';
+				: $connCharset;
+
 		if (!empty($charset)) $this->dbConn->set_charset($charset);
+
+		$collation = isset($parameters['collation'])
+			? $parameters['collation']
+			: $connCollation;
+
+		if (!empty($collation)) $this->dbConn->query("SET collation_connection = {$collation}");
 	}
 
 	public function __destruct() {
-		if ($this->dbConn) {
+		if (is_resource($this->dbConn)) {
 			mysqli_close($this->dbConn);
 			$this->dbConn = null;
 		}
@@ -103,10 +134,10 @@ class MySQLiConnector extends DBConnector {
 	public function getVersion() {
 		return $this->dbConn->server_info;
 	}
-	
+
 	/**
 	 * Invoked before any query is executed
-	 * 
+	 *
 	 * @param string $sql
 	 */
 	protected function beforeQuery($sql) {
@@ -232,7 +263,7 @@ class MySQLiConnector extends DBConnector {
 			// Safely execute the statement
 			$statement->execute();
 		}
-		
+
 		if (!$success || $statement->error) {
 			$values = $this->parameterValues($parameters);
 			$this->databaseError($this->getLastError(), $errorLevel, $sql, $values);

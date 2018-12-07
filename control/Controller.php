@@ -90,13 +90,6 @@ class Controller extends RequestHandler implements TemplateGlobalProvider {
 	}
 
 	/**
-	 * Returns a link to this controller.  Overload with your own Link rules if they exist.
-	 */
-	public function Link() {
-		return get_class($this) .'/';
-	}
-
-	/**
 	 * Executes this controller, and return an {@link SS_HTTPResponse} object with the result.
 	 *
 	 * This method first does a few set-up activities:
@@ -133,6 +126,7 @@ class Controller extends RequestHandler implements TemplateGlobalProvider {
 		$this->pushCurrent();
 		$this->urlParams = $request->allParams();
 		$this->setRequest($request);
+		$this->getResponse();
 		$this->setDataModel($model);
 
 		$this->extend('onBeforeInit');
@@ -164,7 +158,7 @@ class Controller extends RequestHandler implements TemplateGlobalProvider {
 			$this->setResponse($response);
 
 		} else {
-			if($body instanceof Object && $body->hasMethod('getViewer')) {
+			if($body instanceof SS_Object && $body->hasMethod('getViewer')) {
 				if(isset($_REQUEST['debug_request'])) {
 					Debug::message("Request handler $body->class object to $this->class controller;"
 						. "rendering with template returned by $body->class::getViewer()");
@@ -175,10 +169,7 @@ class Controller extends RequestHandler implements TemplateGlobalProvider {
 			$response->setBody($body);
 		}
 
-
 		ContentNegotiator::process($response);
-		HTTP::add_cache_headers($response);
-
 		$this->popCurrent();
 		return $response;
 	}
@@ -408,7 +399,7 @@ class Controller extends RequestHandler implements TemplateGlobalProvider {
 
 	/**
 	 * Returns the current controller
-	 * @returns Controller
+	 * @return Controller
 	 */
 	public static function curr() {
 		if(Controller::$controller_stack) {
@@ -508,7 +499,7 @@ class Controller extends RequestHandler implements TemplateGlobalProvider {
 	 */
 	public function redirectBack() {
 		// Don't cache the redirect back ever
-		HTTP::set_cache_age(0);
+		HTTPCacheControl::singleton()->disableCache(true);
 
 		$url = null;
 
@@ -590,7 +581,7 @@ class Controller extends RequestHandler implements TemplateGlobalProvider {
 				$queryargs = array_merge($queryargs, $localargs);
 			}
 			if((is_string($arg) && $arg) || is_numeric($arg)) {
-				$arg = (string)$arg;
+				$arg = (string) $arg;
 				if($result && substr($result,-1) != '/' && $arg[0] != '/') $result .= "/$arg";
 				else $result .= (substr($result, -1) == '/' && $arg[0] == '/') ? ltrim($arg, '/') : $arg;
 			}

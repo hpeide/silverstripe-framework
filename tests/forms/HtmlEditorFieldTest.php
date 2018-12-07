@@ -15,6 +15,20 @@ class HtmlEditorFieldTest extends FunctionalTest {
 
 	protected $extraDataObjects = array('HtmlEditorFieldTest_Object');
 
+	public function testCasting() {
+		// Test special characters
+		$inputText = "These are some unicodes: ä, ö, & ü";
+		$field = new HTMLEditorField("Test", "Test");
+		$field->setValue($inputText);
+		$this->assertContains('These are some unicodes: &auml;, &ouml;, &amp; &uuml;', $field->Field());
+
+		// Test shortcodes
+		$inputText = "Shortcode: [file_link id=4]";
+		$field = new HTMLEditorField("Test", "Test");
+		$field->setValue($inputText);
+		$this->assertContains('Shortcode: [file_link id=4]', $field->Field());
+	}
+
 	public function testBasicSaving() {
 		$obj = new HtmlEditorFieldTest_Object();
 		$editor   = new HtmlEditorField('Content');
@@ -114,6 +128,42 @@ class HtmlEditorFieldTest extends FunctionalTest {
 		$this->assertEquals (
 			'<p><a name="example-anchor"></a></p>', $obj->Content, 'Saving a link without a href attribute works'
 		);
+	}
+
+	public function testGetAnchors() {
+		if (!class_exists('Page')) {
+			$this->markTestSkipped();
+		}
+		$html = '<div name="foo"></div>
+<div name=\'bar\'></div>
+<div id="baz"></div>
+<div id=\'bam\'></div>
+<div id = "baz"></div>
+<div id = ""></div>
+<div id="some\'id"></div>
+<div id=bar></div>';
+		$expected = array(
+			'foo',
+			'bar',
+			'baz',
+			'bam',
+			"some&#039;id",
+		);
+		$page = new Page();
+		$page->Title = 'Test';
+		$page->Content = $html;
+		$page->write();
+		$this->useDraftSite(true);
+
+		$request = new SS_HTTPRequest('GET', '/', array(
+			'PageID' => $page->ID,
+		));
+
+		$toolBar = new HtmlEditorField_Toolbar(new Controller(), 'test');
+		$toolBar->setRequest($request);
+
+		$results = json_decode($toolBar->getanchors(), true);
+		$this->assertEquals($expected, $results);
 	}
 
 	public function testHtmlEditorFieldFileLocal() {

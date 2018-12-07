@@ -104,8 +104,6 @@ class GridField extends FormField {
 		}
 
 		$this->setConfig($config);
-
-		$this->config->addComponent(new GridState_Component());
 		$this->state = new GridState($this);
 
 		$this->addExtraClass('ss-gridfield');
@@ -149,7 +147,7 @@ class GridField extends FormField {
 			return $this->modelClassName;
 		}
 
-		if($this->list && method_exists($this->list, 'dataClass')) {
+		if($this->list && $this->list->hasMethod('dataClass')) {
 			$class = $this->list->dataClass();
 
 			if($class) {
@@ -176,6 +174,10 @@ class GridField extends FormField {
 	 */
 	public function setConfig(GridFieldConfig $config) {
 		$this->config = $config;
+
+		if (!$this->config->getComponentByType('GridState_Component')) {
+			$this->config->addComponent(new GridState_Component());
+		}
 
 		return $this;
 	}
@@ -335,26 +337,34 @@ class GridField extends FormField {
 			'before' => true,
 			'after' => true,
 		);
+		$fragmentDeferred = array();
 
-		reset($content);
+		// TODO: Break the below into separate reducer methods
 
-		while(list($contentKey, $contentValue) = each($content)) {
-			if(preg_match_all('/\$DefineFragment\(([a-z0-9\-_]+)\)/i', $contentValue, $matches)) {
-				foreach($matches[1] as $match) {
+		// Continue looping if any placeholders exist
+		while (array_filter($content, function ($value) {
+			return preg_match('/\$DefineFragment\(([a-z0-9\-_]+)\)/i', $value);
+		})) {
+			foreach ($content as $contentKey => $contentValue) {
+				// Skip if this specific content has no placeholders
+				if (!preg_match_all('/\$DefineFragment\(([a-z0-9\-_]+)\)/i', $contentValue, $matches)) {
+					continue;
+				}
+				foreach ($matches[1] as $match) {
 					$fragmentName = strtolower($match);
 					$fragmentDefined[$fragmentName] = true;
 
 					$fragment = '';
 
-					if(isset($content[$fragmentName])) {
+					if (isset($content[$fragmentName])) {
 						$fragment = $content[$fragmentName];
 					}
 
 					// If the fragment still has a fragment definition in it, when we should defer
 					// this item until later.
 
-					if(preg_match('/\$DefineFragment\(([a-z0-9\-_]+)\)/i', $fragment, $matches)) {
-						if(isset($fragmentDeferred[$contentKey]) && $fragmentDeferred[$contentKey] > 5) {
+					if (preg_match('/\$DefineFragment\(([a-z0-9\-_]+)\)/i', $fragment, $matches)) {
+						if (isset($fragmentDeferred[$contentKey]) && $fragmentDeferred[$contentKey] > 5) {
 							throw new LogicException(sprintf(
 								'GridField HTML fragment "%s" and "%s" appear to have a circular dependency.',
 								$fragmentName,
@@ -366,7 +376,7 @@ class GridField extends FormField {
 
 						$content[$contentKey] = $contentValue;
 
-						if(!isset($fragmentDeferred[$contentKey])) {
+						if (!isset($fragmentDeferred[$contentKey])) {
 							$fragmentDeferred[$contentKey] = 0;
 						}
 
@@ -383,6 +393,7 @@ class GridField extends FormField {
 				}
 			}
 		}
+
 
 		// Check for any undefined fragments, and if so throw an exception.
 		// While we're at it, trim whitespace off the elements.
@@ -501,11 +512,14 @@ class GridField extends FormField {
 			$header . "\n" . $footer . "\n" . $body
 		);
 
-		return DBField::create_field('HTMLText', FormField::create_tag(
+		$field = DBField::create_field('HTMLText', FormField::create_tag(
 			'fieldset',
 			$fieldsetAttributes,
 			$content['before'] . $table . $content['after']
 		));
+		$field->setOptions(array('shortcodes' => false));
+
+		return $field;
 	}
 
 	/**
@@ -583,6 +597,8 @@ class GridField extends FormField {
 			$classes[] = 'odd';
 		}
 
+		$this->extend('updateNewRowClasses', $classes, $total, $index, $record);
+
 		return $classes;
 	}
 
@@ -592,6 +608,7 @@ class GridField extends FormField {
 	 * @return HTMLText
 	 */
 	public function Field($properties = array()) {
+		$this->extend('onBeforeRender', $this);
 		return $this->FieldHolder($properties);
 	}
 
@@ -833,6 +850,18 @@ class GridField extends FormField {
 	 */
 	public function gridFieldAlterAction($data, $form, SS_HTTPRequest $request) {
 		$data = $request->requestVars();
+
+		// Protection against CSRF attacks
+		$token = $this
+			->getForm()
+			->getSecurityToken();
+		if(!$token->checkRequest($request)) {
+			$this->httpError(400, _t("Form.CSRF_FAILED_MESSAGE",
+				"There seems to have been a technical problem. Please click the back button, ".
+				"refresh your browser, and try again."
+			));
+		}
+
 		$name = $this->getName();
 
 		$fieldData = null;

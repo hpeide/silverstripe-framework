@@ -10,11 +10,6 @@
  * @subpackage security
  */
 abstract class LoginForm extends Form {
-	public function __construct($controller, $name, $fields, $actions) {
-		parent::__construct($controller, $name, $fields, $actions);
-
-		$this->disableSecurityToken();
-	}
 
 	/**
 	 * Authenticator class to use with this login form
@@ -23,12 +18,21 @@ abstract class LoginForm extends Form {
 	 * form.
 	 * @var string
 	 */
-
 	protected $authenticator_class;
 
 	/**
+	 * The minimum amount of time authenticating is allowed to take in milliseconds.
+	 *
+	 * Protects against timing enumeration attacks
+	 *
+	 * @config
+	 * @var int
+	 */
+	private static $min_auth_time = 350;
+
+	/**
 	 * Get the authenticator instance
-	 * 
+	 *
 	 * @return Authenticator Returns the authenticator instance for this login form.
 	 */
 	public function getAuthenticator() {
@@ -47,6 +51,16 @@ abstract class LoginForm extends Form {
 	public function getAuthenticatorName() {
 		$authClass = $this->authenticator_class;
 		return $authClass::get_name();
+	}
+
+	public function setAuthenticatorClass($class)
+	{
+		$this->authenticator_class = $class;
+		$authenticatorField = $this->Fields()->dataFieldByName('AuthenticationMethod');
+		if ($authenticatorField) {
+			$authenticatorField->setValue($class);
+		}
+		return $this;
 	}
 
 }

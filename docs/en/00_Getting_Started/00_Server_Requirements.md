@@ -8,8 +8,9 @@ Our web-based [PHP installer](installation/) can check if you meet the requireme
 
 ## Web server software requirements
 
- * PHP 5.3.3+
+ * PHP 5.3.3+, <7.2
  * We recommend using a PHP accelerator or opcode cache, such as [xcache](http://xcache.lighttpd.net/) or [WinCache](http://www.iis.net/download/wincacheforphp).
+     * Note: Some PHP 5.5+ packages already have [Zend OpCache](http://php.net/manual/en/book.opcache.php) installed by default. If this is the case on your system, do not try and run additional opcaches alongside Zend OpCache without first disabling it, as it will likely have unexpected consequences.
  * Allocate at least 48MB of memory to each PHP process. (SilverStripe can be resource hungry for some intensive operations.)
  * Required modules: dom, gd2, fileinfo, hash, iconv, mbstring, mysqli (or other database driver), session, simplexml, tokenizer, xml.
  * Recommended configuration
@@ -33,6 +34,10 @@ Our web-based [PHP installer](installation/) can check if you meet the requireme
   * Linux/Unix/BSD
   * Microsoft Windows XP SP3, Vista, Windows 7, Server 2008, Server 2008 R2
   * Mac OS X 10.4+
+
+### Does SilverStripe 3 work with PHP 7?
+SilverStripe 3.6 or greater will work with PHP 7.0 and 7.1. SilverStripe 3.5 or lower will only work with PHP
+5.3 - 5.6.
 
 ## Web server hardware requirements
 
